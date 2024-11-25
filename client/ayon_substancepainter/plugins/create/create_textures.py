@@ -142,12 +142,25 @@ class CreateTextures(Creator):
                 "CoatSpecularLevel": "Coat Specular Level",
                 "CoatNormal": "Coat Normal",
             }
+        export_texture_set_enum = {
+            texture_set.name(): texture_set.name()
+            for texture_set in substance_painter.textureset.all_texture_sets()
+        }
 
         return [
             BoolDef("review",
                     label="Review",
                     tooltip="Mark as reviewable",
                     default=True),
+            EnumDef("exportTextureSet",
+                    items=export_texture_set_enum,
+                    multiselection=True,
+                    default=None,
+                    label="Export Texture Set(s)",
+                    tooltip="Choose the texture set(s) which "
+                            "you want to export. The value "
+                            "is 'None' by default which exports "
+                            "all texture sets"),
             EnumDef("exportChannel",
                     items=export_channel_enum,
                     multiselection=True,

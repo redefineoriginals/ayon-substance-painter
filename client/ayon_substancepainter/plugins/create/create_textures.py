@@ -158,9 +158,9 @@ class CreateTextures(Creator):
                     default=None,
                     label="Export Texture Set(s)",
                     tooltip="Choose the texture set(s) which "
-                            "you want to export. The value "
-                            "is 'None' by default which exports "
-                            "all texture sets"),
+                            "you want to export. If no sets are "
+                            "are selected then all texture sets "
+                            "will be exported."),
             EnumDef("exportChannel",
                     items=export_channel_enum,
                     multiselection=True,

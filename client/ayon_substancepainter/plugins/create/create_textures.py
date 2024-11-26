@@ -152,7 +152,7 @@ class CreateTextures(Creator):
                     label="Review",
                     tooltip="Mark as reviewable",
                     default=True),
-            EnumDef("exportTextureSet",
+            EnumDef("exportTextureSets",
                     items=export_texture_set_enum,
                     multiselection=True,
                     default=None,

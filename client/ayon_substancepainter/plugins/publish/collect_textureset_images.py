@@ -209,18 +209,19 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         }
 
         # Create the list of Texture Sets to export.
+        config["exportList"] = []
         export_texture_sets = creator_attrs.get("exportTextureSets", [])
-        if export_texture_sets:
-            config["exportList"] = [
-                {"rootPath": texture_set_name}
-                for texture_set_name in export_texture_sets
-            ]
-        else:
-            config["exportList"] = [
-                {"rootPath": texture_set_name}
-                for texture_set_name in
+        if not export_texture_sets:
+            # Export all texture sets
+            export_texture_sets = [
+                texture_set.name() for texture_set in
                 substance_painter.textureset.all_texture_sets()
             ]
+
+        config["exportList"] = [
+            {"rootPath": texture_set_name}
+            for texture_set_name in export_texture_sets
+        ]
 
         # Consider None values from the creator attributes optionals
         for override in config["exportParameters"]:

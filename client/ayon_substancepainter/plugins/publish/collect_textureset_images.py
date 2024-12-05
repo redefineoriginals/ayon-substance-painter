@@ -4,6 +4,7 @@ import copy
 import pyblish.api
 import ayon_api
 
+from collections import defaultdict
 import substance_painter.textureset
 from ayon_core.pipeline import publish
 from ayon_substancepainter.api.lib import (
@@ -44,14 +45,29 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
 
         # Let's break the instance into multiple instances to integrate
         # a product per generated texture or texture UDIM sequence
-        for (texture_set_name, stack_name), template_maps in maps.items():
-            self.log.info(f"Processing {texture_set_name}/{stack_name}")
-            for template, outputs in template_maps.items():
-                self.log.info(f"Processing {template}")
-                self.create_image_instance(instance, template, outputs,
-                                           task_entity=task_entity,
-                                           texture_set_name=texture_set_name,
-                                           stack_name=stack_name)
+        creator_attr = instance.data["creator_attributes"]
+        if creator_attr.get("exportTextureSetsAsOneOutput", False):
+            texture_sets_by_map_identifier = defaultdict(list)
+            for (texture_set_name, stack_name), template_maps in maps.items():
+                for template, outputs in template_maps.items():
+                    self.log.info(f"Processing {template}")
+                    map_identifier = strip_template(template)
+                    map_identifier = f"{map_identifier}"
+                    texture_sets_by_map_identifier[map_identifier].extend(outputs)
+            for map_identifier, outputs in texture_sets_by_map_identifier.items():
+                self.log.info(f"Processing {map_identifier}")
+                self.create_image_instance_by_map_filtering(
+                    instance, outputs, task_entity, map_identifier)
+
+        else:
+            for (texture_set_name, stack_name), template_maps in maps.items():
+                self.log.info(f"Processing {texture_set_name}/{stack_name}")
+                for template, outputs in template_maps.items():
+                    self.log.info(f"Processing {template}")
+                    self.create_image_instance(instance, template, outputs,
+                                                task_entity=task_entity,
+                                                texture_set_name=texture_set_name,
+                                                stack_name=stack_name)
 
     def create_image_instance(self, instance, template, outputs,
                               task_entity, texture_set_name, stack_name):
@@ -155,6 +171,110 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         # Store the texture set name and stack name on the instance
         image_instance.data["textureSetName"] = texture_set_name
         image_instance.data["textureStackName"] = stack_name
+
+        # Store color space with the instance
+        # Note: The extractor will assign it to the representation
+        colorspace = outputs[0].get("colorSpace")
+        if colorspace:
+            self.log.debug(f"{image_product_name} colorspace: {colorspace}")
+            image_instance.data["colorspace"] = colorspace
+
+        # Store the instance in the original instance as a member
+        instance.append(image_instance)
+
+    def create_image_instance_by_map_filtering(self, instance, outputs,
+                                               task_entity, map_identifier):
+        """Create a new instance per image based on map filtering.
+
+        The new instances will be of product type `image`.
+        **Only used for exporting multiple texture sets as one texture output
+
+        """
+
+        context = instance.context
+        first_filepath = outputs[0]["filepath"]
+        fnames = [os.path.basename(output["filepath"]) for output in outputs]
+        ext = os.path.splitext(first_filepath)[1]
+        assert ext.lstrip("."), f"No extension: {ext}"
+        # Function to remove textureSet from filepath
+        def remove_texture_set_token(filepath, texture_set):
+            return filepath.replace(texture_set, '')
+
+        fnames_without_textureSet = [
+            remove_texture_set_token(output["output"], output["textureSet"])
+            for output in outputs
+        ]
+
+        task_name = task_type = None
+        if task_entity:
+            task_name = task_entity["name"]
+            task_type = task_entity["taskType"]
+
+        # TODO: The product type actually isn't 'texture' currently but
+        #   for now this is only done so the product name starts with
+        #   'texture'
+        image_product_name = get_product_name(
+            context.data["projectName"],
+            task_name,
+            task_type,
+            context.data["hostName"],
+            product_type="texture",
+            variant=instance.data["variant"] + f".{map_identifier}",
+            project_settings=context.data["project_settings"]
+        )
+        image_product_group_name = get_product_name(
+            context.data["projectName"],
+            task_name,
+            task_type,
+            context.data["hostName"],
+            product_type="texture",
+            variant=instance.data["variant"],
+            project_settings=context.data["project_settings"]
+        )
+
+        # Prepare representation
+        representation = {
+            "name": ext.lstrip("."),
+            "ext": ext.lstrip("."),
+            #TODO: strip the texture_sets.
+            "files": (
+                fnames_without_textureSet
+                if len(fnames_without_textureSet) > 1
+                else fnames_without_textureSet[0]
+            ),
+        }
+
+        # Mark as UDIM explicitly if it has UDIM tiles.
+        if bool(outputs[0].get("udim")):
+            # The representation for a UDIM sequence should have a `udim` key
+            # that is a list of all udim tiles (str) like: ["1001", "1002"]
+            # strings. See CollectTextures plug-in and Integrators.
+            representation["udim"] = [output["udim"] for output in outputs]
+
+        # Set up the representation for thumbnail generation
+        # TODO: Simplify this once thumbnail extraction is refactored
+        staging_dir = os.path.dirname(first_filepath)
+        representation["tags"] = ["review"]
+        representation["stagingDir"] = staging_dir
+        # Clone the instance
+        product_type = "image"
+        image_instance = context.create_instance(image_product_name)
+        image_instance[:] = instance[:]
+        image_instance.data.update(copy.deepcopy(dict(instance.data)))
+        image_instance.data["name"] = image_product_name
+        image_instance.data["label"] = image_product_name
+        image_instance.data["productName"] = image_product_name
+        image_instance.data["productType"] = product_type
+        image_instance.data["family"] = product_type
+        image_instance.data["families"] = [product_type, "textures"]
+        if instance.data["creator_attributes"].get("review"):
+            image_instance.data["families"].append("review")
+        image_instance.data["image_outputs"] = fnames
+        image_instance.data["representations"] = [representation]
+
+        # Group the textures together in the loader
+        image_instance.data["productGroup"] = image_product_group_name
+
 
         # Store color space with the instance
         # Note: The extractor will assign it to the representation

@@ -53,7 +53,9 @@ class CreateTextures(Creator):
             "exportPadding",
             "exportDilationDistance",
             "useCustomExportPreset",
-            "exportChannel"
+            "exportChannel",
+            "exportTextureSets",
+            "exportTextureSetsAsOneOutput"
         ]:
             if key in pre_create_data:
                 creator_attributes[key] = pre_create_data[key]
@@ -152,6 +154,11 @@ class CreateTextures(Creator):
                     label="Review",
                     tooltip="Mark as reviewable",
                     default=True),
+            BoolDef("exportTextureSetsAsOneOutput",
+                    label="Export Texture Sets As One Texture Output",
+                    tooltip="Export multiple texture set(s) "
+                            "as one Texture Output",
+                    default=False),
             EnumDef("exportTextureSets",
                     items=export_texture_set_enum,
                     multiselection=True,

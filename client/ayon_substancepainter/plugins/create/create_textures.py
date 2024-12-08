@@ -55,7 +55,7 @@ class CreateTextures(Creator):
             "useCustomExportPreset",
             "exportChannel",
             "exportTextureSets",
-            "exportTextureSetsAsOneOutput"
+            "flattenTextureSets"
         ]:
             if key in pre_create_data:
                 creator_attributes[key] = pre_create_data[key]
@@ -154,7 +154,7 @@ class CreateTextures(Creator):
                     label="Review",
                     tooltip="Mark as reviewable",
                     default=True),
-            BoolDef("exportTextureSetsAsOneOutput",
+            BoolDef("flattenTextureSets",
                     label="Export Texture Sets As One Texture Output",
                     tooltip="Export multiple texture set(s) "
                             "as one Texture Output",

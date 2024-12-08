@@ -45,31 +45,14 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
 
         # Let's break the instance into multiple instances to integrate
         # a product per generated texture or texture UDIM sequence
-        creator_attr = instance.data["creator_attributes"]
-        if creator_attr.get("exportTextureSetsAsOneOutput", False):
-            texture_sets_by_map_identifier = defaultdict(list)
-            for (texture_set_name, stack_name), template_maps in maps.items():
-                for template, outputs in template_maps.items():
-                    self.log.info(f"Processing {template}")
-                    map_identifier = strip_template(template)
-                    map_identifier = f"{map_identifier}"
-                    texture_sets_by_map_identifier[map_identifier].extend(outputs)
-            for map_identifier, outputs in texture_sets_by_map_identifier.items():
-                self.log.info(f"Processing {map_identifier}")
+        for (texture_set_name, stack_name), template_maps in maps.items():
+            self.log.info(f"Processing {texture_set_name}/{stack_name}")
+            for template, outputs in template_maps.items():
+                self.log.info(f"Processing {template}")
                 self.create_image_instance(instance, template, outputs,
-                                            task_entity=task_entity,
-                                            texture_set_name=texture_set_name,
-                                            stack_name=stack_name)
-
-        else:
-            for (texture_set_name, stack_name), template_maps in maps.items():
-                self.log.info(f"Processing {texture_set_name}/{stack_name}")
-                for template, outputs in template_maps.items():
-                    self.log.info(f"Processing {template}")
-                    self.create_image_instance(instance, template, outputs,
-                                                task_entity=task_entity,
-                                                texture_set_name=texture_set_name,
-                                                stack_name=stack_name)
+                                           task_entity=task_entity,
+                                           texture_set_name=texture_set_name,
+                                           stack_name=stack_name)
 
     def create_image_instance(self, instance, template, outputs,
                               task_entity, texture_set_name, stack_name):
@@ -82,7 +65,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         context = instance.context
         first_filepath = outputs[0]["filepath"]
         is_single_output = instance.data["creator_attributes"].get(
-            "exportTextureSetsAsOneOutput", False)
+            "flattenTextureSets", False)
         fnames = [os.path.basename(output["filepath"]) for output in outputs]
         ext = os.path.splitext(first_filepath)[1]
         assert ext.lstrip("."), f"No extension: {ext}"

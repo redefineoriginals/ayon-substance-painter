@@ -81,7 +81,7 @@ class ExtractTexturesAsSingleOutput(publish.Extractor):
 
     def process(self, instance):
         if not instance.data.get("creator_attributes", {}).get(
-            "exportTextureSetsAsOneOutput", False):
+            "flattenTextureSets", False):
             self.log.debug(
                 "Skipping to export texture sets as single texture output.."
             )

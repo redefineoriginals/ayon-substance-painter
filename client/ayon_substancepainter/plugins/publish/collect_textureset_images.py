@@ -4,7 +4,6 @@ import copy
 import pyblish.api
 import ayon_api
 
-from collections import defaultdict
 import substance_painter.textureset
 from ayon_core.pipeline import publish
 from ayon_substancepainter.api.lib import (

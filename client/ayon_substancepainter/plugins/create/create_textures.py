@@ -155,7 +155,7 @@ class CreateTextures(Creator):
                     tooltip="Mark as reviewable",
                     default=True),
             BoolDef("flattenTextureSets",
-                    label="Export Texture Sets As One Texture Output",
+                    label="Flatten Texture Sets As One Texture Output",
                     tooltip="Export multiple texture set(s) "
                             "as one Texture Output",
                     default=False),

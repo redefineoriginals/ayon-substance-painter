@@ -22,7 +22,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
     label = "Collect Texture Set images"
     hosts = ["substancepainter"]
     families = ["textureSet"]
-    order = pyblish.api.CollectorOrder + 0.01
+    order = pyblish.api.CollectorOrder + 0.491
 
     def process(self, instance):
 
@@ -187,7 +187,6 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
 
         creator_attrs = instance.data["creator_attributes"]
         preset_url = creator_attrs["exportPresetUrl"]
-        instance.data["anatomyData"] = instance.context.data["anatomyData"]
         self.log.debug(f"Exporting using preset: {preset_url}")
 
         # See: https://substance3d.adobe.com/documentation/ptpy/api/substance_painter/export  # noqa

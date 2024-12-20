@@ -2,7 +2,7 @@ import copy
 
 import pyblish.api
 from ayon_core.pipeline import publish
-from ayon_substancepainter.api.lib import get_parsed_export_maps
+
 
 class CollectStagingDirExportConfig(pyblish.api.InstancePlugin):
     """Collect Staging Dir for Export Config to export the textures"""

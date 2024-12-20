@@ -4,7 +4,6 @@ import pyblish.api
 class CollectStagingDirExportConfig(pyblish.api.InstancePlugin):
     """Collect Staging Dir for Export Config to export the textures"""
 
-
     label = "Collect Staging dir for Export Config"
     hosts = ["substancepainter"]
     families = ["textureSet", "textures", "image"]

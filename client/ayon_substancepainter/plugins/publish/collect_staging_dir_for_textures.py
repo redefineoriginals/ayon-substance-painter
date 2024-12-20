@@ -1,7 +1,4 @@
-import copy
-
 import pyblish.api
-from ayon_core.pipeline import publish
 
 
 class CollectStagingDirExportConfig(pyblish.api.InstancePlugin):
@@ -11,13 +8,10 @@ class CollectStagingDirExportConfig(pyblish.api.InstancePlugin):
     label = "Collect Staging dir for Export Config"
     hosts = ["substancepainter"]
     families = ["textureSet", "textures", "image"]
-    order = pyblish.api.CollectorOrder + 0.491
+    order = pyblish.api.CollectorOrder + 0.4991
 
     def process(self, instance):
-        export_config = copy.deepcopy(instance.data["exportConfig"])
-        export_config["exportPath"] = publish.get_instance_staging_dir(instance)
-        instance.data["exportConfig"] = export_config
-        instance.data.update(instance.data["exportConfig"])
+        instance.data["exportConfig"]["exportPath"] = instance.data["stagingDir"]
 
 class CollectStagingDirTexture(pyblish.api.InstancePlugin):
     """Collect Staging Dir as the representation data for the texture publish"""
@@ -26,14 +20,13 @@ class CollectStagingDirTexture(pyblish.api.InstancePlugin):
     label = "Collect Staging dir for texture"
     hosts = ["substancepainter"]
     families = ["image", "textures"]
-    order = pyblish.api.CollectorOrder + 0.4911
+    order = pyblish.api.CollectorOrder + 0.4992
 
     def process(self, instance):
-        representations: "list[dict]" = instance.data["representations"]
-        staging_dir = instance.data["exportConfig"]["exportPath"]
-        updated_representations = []
-        for representation in list(representations):
-            tmp_representation = copy.deepcopy(representation)
-            tmp_representation["stagingDir"] = staging_dir
-            updated_representations.append(tmp_representation)
-        instance.data["representations"] = updated_representations
+        # Update the collected staging dir because we initially
+        # collected the textures sets using a temp directory
+        # to allow the instances to be defined prior to defining
+        # their expected paths (staging dir) which may be based
+        # on anatomy data and custom staging dirs, etc.
+        for repre in instance.data["representations"]:
+            repre["stagingDir"] = instance.data["stagingDir"]

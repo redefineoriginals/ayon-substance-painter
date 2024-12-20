@@ -15,7 +15,6 @@ class CollectStagingDirExportConfig(pyblish.api.InstancePlugin):
 class CollectStagingDirTexture(pyblish.api.InstancePlugin):
     """Collect Staging Dir as the representation data for the texture publish"""
 
-
     label = "Collect Staging dir for texture"
     hosts = ["substancepainter"]
     families = ["image", "textures"]

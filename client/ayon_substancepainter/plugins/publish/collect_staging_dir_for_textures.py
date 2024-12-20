@@ -31,9 +31,8 @@ class CollectStagingDirTexture(pyblish.api.InstancePlugin):
     def process(self, instance):
         representations: "list[dict]" = instance.data["representations"]
         updated_representations = []
-        for representation in representations:
+        for representation in list(representations):
             tmp_representation = copy.deepcopy(representation)
-            tmp_representation["staging_dir"] = publish.get_instance_staging_dir(instance)
+            tmp_representation["stagingDir"] = instance.data["exportConfig"]["exportPath"]
             updated_representations.append(tmp_representation)
-
-        instance.data["representations"] = representations
+        instance.data["representations"] = updated_representations

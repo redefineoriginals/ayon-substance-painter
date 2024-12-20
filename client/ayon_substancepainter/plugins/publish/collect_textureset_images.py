@@ -188,11 +188,10 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         creator_attrs = instance.data["creator_attributes"]
         preset_url = creator_attrs["exportPresetUrl"]
         self.log.debug(f"Exporting using preset: {preset_url}")
-        temp_dir = tempfile.TemporaryDirectory()
         # See: https://substance3d.adobe.com/documentation/ptpy/api/substance_painter/export  # noqa
         config = {  # noqa
             "exportShaderParams": True,
-            "exportPath": temp_dir.name,
+            "exportPath": tempfile.gettempdir(),
             "defaultExportPreset": preset_url,
 
             # Custom overrides to the exporter

@@ -25,7 +25,6 @@ class ExtractTextures(publish.Extractor,
     def process(self, instance):
 
         config = instance.data["exportConfig"]
-        self.log.debug(config)
         creator_attrs = instance.data["creator_attributes"]
         export_channel = creator_attrs.get("exportChannel", [])
         node_ids = instance.data.get("selected_node_id", [])

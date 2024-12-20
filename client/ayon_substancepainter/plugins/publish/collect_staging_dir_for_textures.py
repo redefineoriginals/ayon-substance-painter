@@ -12,6 +12,7 @@ class CollectStagingDirExportConfig(pyblish.api.InstancePlugin):
     def process(self, instance):
         instance.data["exportConfig"]["exportPath"] = instance.data["stagingDir"]
 
+
 class CollectStagingDirTexture(pyblish.api.InstancePlugin):
     """Collect Staging Dir as the representation data for the texture publish"""
 

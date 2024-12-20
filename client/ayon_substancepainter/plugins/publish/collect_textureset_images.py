@@ -3,9 +3,9 @@ import copy
 
 import pyblish.api
 import ayon_api
+import tempfile
 
 import substance_painter.textureset
-from ayon_core.pipeline import publish
 from ayon_substancepainter.api.lib import (
     get_parsed_export_maps,
     get_filtered_export_preset,
@@ -22,7 +22,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
     label = "Collect Texture Set images"
     hosts = ["substancepainter"]
     families = ["textureSet"]
-    order = pyblish.api.CollectorOrder + 0.491
+    order = pyblish.api.CollectorOrder
 
     def process(self, instance):
 
@@ -188,11 +188,11 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         creator_attrs = instance.data["creator_attributes"]
         preset_url = creator_attrs["exportPresetUrl"]
         self.log.debug(f"Exporting using preset: {preset_url}")
-
+        temp_dir = tempfile.TemporaryDirectory()
         # See: https://substance3d.adobe.com/documentation/ptpy/api/substance_painter/export  # noqa
         config = {  # noqa
             "exportShaderParams": True,
-            "exportPath": publish.get_instance_staging_dir(instance),
+            "exportPath": temp_dir.name,
             "defaultExportPreset": preset_url,
 
             # Custom overrides to the exporter

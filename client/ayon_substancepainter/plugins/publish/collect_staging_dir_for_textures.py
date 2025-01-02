@@ -1,5 +1,4 @@
 import pyblish.api
-from ayon_core.pipeline import publish
 
 
 class CollectStagingDirExportConfig(pyblish.api.InstancePlugin):

@@ -208,7 +208,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
                 }
             ]
         }
-
+        instance.data.pop("anatomyData")
         # Create the list of Texture Sets to export.
         export_texture_sets = creator_attrs.get("exportTextureSets", [])
         if not export_texture_sets:

@@ -54,12 +54,10 @@ def convert_texture_maps_as_single_output(staging_dir, source_image_outputs,
        dest_map
     ]
 
-    subprocess_args = " ".join(oiio_cmd)
-
     env = os.environ.copy()
 
     try:
-        run_subprocess(subprocess_args, env=env)
+        run_subprocess(oiio_cmd, env=env)
     except Exception as exc:
         raise RuntimeError("Flattening texture stack to single output image failed") from exc
 

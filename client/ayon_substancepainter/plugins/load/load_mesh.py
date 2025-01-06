@@ -234,7 +234,10 @@ class SubstanceLoadProjectMesh(load.LoaderPlugin):
 
         # Update container representation
         object_name = container["objectName"]
-        update_data = {"representation": repre_entity["id"]}
+        update_data = {
+            "representation": repre_entity["id"],
+            "project_name": context["project"]["name"]
+        }
         set_container_metadata(object_name, update_data, update=True)
 
     def remove(self, container):

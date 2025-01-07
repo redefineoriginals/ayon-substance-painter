@@ -242,29 +242,31 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         return config
 
 
-class CollectTextureSetStagingDir(pyblish.api.Instance):
+class CollectTextureSetStagingDir(pyblish.api.InstancePlugin):
     """Set the staging directory for the `textureSet` instance taking into
     account custom staging dirs. Propagate this custom staging dir to the
     individual texture image instances that are created from the textureSet"""
 
-    # Run after CollectAnatomyInstanceData
-    order = pyblish.api.CollectorOrder + 0.491
-    families = ["textureSet"]
     label = "Texture Set Staging Dir"
+    hosts = ["substancepainter"]
+    families = ["textureSet"]
+
+    # Run after CollectManagedStagingDir
+    order = pyblish.api.CollectorOrder + 0.4991
 
     def process(self, instance):
 
-        staging_dir = publish.get_instance_staging_dir(instance)
+        staging_dir = instance.data["stagingDir"]
 
         # Update export config
-        config = instance.data["config"]
+        config = instance.data["exportConfig"]
         config["exportPath"] = staging_dir
 
         # Update image instances and their representations
         for image_instance in instance:
 
             # Include the updated config
-            image_instance.data["config"] = copy.deepcopy(config)
+            image_instance.data["exportConfig"] = copy.deepcopy(config)
 
             # Update representation staging dir.
             for repre in image_instance.data["representations"]:

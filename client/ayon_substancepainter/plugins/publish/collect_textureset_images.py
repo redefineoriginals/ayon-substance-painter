@@ -267,6 +267,7 @@ class CollectTextureSetStagingDir(pyblish.api.InstancePlugin):
 
             # Include the updated config
             image_instance.data["exportConfig"] = copy.deepcopy(config)
+            image_instance.data["stagingDir"] = staging_dir
 
             # Update representation staging dir.
             for repre in image_instance.data["representations"]:

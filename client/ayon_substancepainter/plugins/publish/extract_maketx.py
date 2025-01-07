@@ -120,7 +120,8 @@ class ExtractMakeTX(publish.Extractor,
             return
 
         # Skip inactive instances (somehow these aren't skipped automatically?)
-        if instance.data.get("active", True):
+        if not instance.data.get("active", True):
+            self.log.debug(f"Skipping inactive instance: {instance}")
             return
 
         representations: "list[dict]" = instance.data["representations"]

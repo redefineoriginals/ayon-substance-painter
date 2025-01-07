@@ -149,7 +149,8 @@ class ExtractMakeTX(publish.Extractor,
 
             # Generate the TX files
             tx_files = []
-            staging_dir = instance.data["stagingDir"]
+            staging_dir = representation.get("stagingDir",
+                                             instance.data["stagingDir"])
             for source_filename in source_files:
                 source_filepath = os.path.join(staging_dir, source_filename)
                 self.log.debug(f"Converting to .tx: {source_filepath}")

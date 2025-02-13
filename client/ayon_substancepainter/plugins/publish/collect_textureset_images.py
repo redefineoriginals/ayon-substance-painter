@@ -5,7 +5,7 @@ import pyblish.api
 import ayon_api
 
 import substance_painter.textureset
-from ayon_core.pipeline import publish
+from ayon_core.pipeline import tempdir
 from ayon_substancepainter.api.lib import (
     get_parsed_export_maps,
     get_filtered_export_preset,
@@ -205,13 +205,20 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
 
         creator_attrs = instance.data["creator_attributes"]
         preset_url = creator_attrs["exportPresetUrl"]
-        instance.data["anatomyData"] = instance.context.data["anatomyData"]
-        self.log.debug(f"Exporting using preset: {preset_url}")
+
+        # Temporary directory purely for 'collecting' the expected output files
+        # which is replaced in the export config by the
+        # `CollectTextureSetStagingDir` plug-in below at a later collector
+        # order that has correctly defined anatomy data for the instance's
+        # custom staging dir.
+        temp_dir = tempdir.get_temp_dir(
+            instance.context.data["projectName"],
+            use_local_temp=True)
 
         # See: https://substance3d.adobe.com/documentation/ptpy/api/substance_painter/export  # noqa
         config = {  # noqa
             "exportShaderParams": True,
-            "exportPath": publish.get_instance_staging_dir(instance),
+            "exportPath": temp_dir,
             "defaultExportPreset": preset_url,
 
             # Custom overrides to the exporter
@@ -226,7 +233,6 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
                 }
             ]
         }
-
         # Create the list of Texture Sets to export.
         export_texture_sets = creator_attrs.get("exportTextureSets", [])
         if not export_texture_sets:
@@ -252,3 +258,35 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             maps = get_filtered_export_preset(preset_url, channel_layer)
             config.update(maps)
         return config
+
+
+class CollectTextureSetStagingDir(pyblish.api.InstancePlugin):
+    """Set the staging directory for the `textureSet` instance taking into
+    account custom staging dirs. Propagate this custom staging dir to the
+    individual texture image instances that are created from the textureSet"""
+
+    label = "Texture Set Staging Dir"
+    hosts = ["substancepainter"]
+    families = ["textureSet"]
+
+    # Run after CollectManagedStagingDir
+    order = pyblish.api.CollectorOrder + 0.4991
+
+    def process(self, instance):
+
+        staging_dir = instance.data["stagingDir"]
+
+        # Update export config
+        config = instance.data["exportConfig"]
+        config["exportPath"] = staging_dir
+
+        # Update image instances and their representations
+        for image_instance in instance:
+
+            # Include the updated config
+            image_instance.data["exportConfig"] = copy.deepcopy(config)
+            image_instance.data["stagingDir"] = staging_dir
+
+            # Update representation staging dir.
+            for repre in image_instance.data["representations"]:
+                repre["stagingDir"] = staging_dir

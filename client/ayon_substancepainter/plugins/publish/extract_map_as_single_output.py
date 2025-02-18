@@ -75,7 +75,7 @@ class ExtractTexturesAsSingleOutput(publish.Extractor):
     settings_category = "substancepainter"
 
     # Run directly after textures export
-    order = publish.Extractor.order - 0.099
+    order = publish.Extractor.order - 0.098
 
     def process(self, instance):
         if not instance.data.get("creator_attributes", {}).get(

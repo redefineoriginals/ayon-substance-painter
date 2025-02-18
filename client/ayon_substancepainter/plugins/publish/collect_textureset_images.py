@@ -68,17 +68,6 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         fnames = [os.path.basename(output["filepath"]) for output in outputs]
         ext = os.path.splitext(first_filepath)[1]
         assert ext.lstrip("."), f"No extension: {ext}"
-        if is_single_output:
-            # Function to remove textureSet from filepath
-            def remove_texture_set_token(filepath, texture_set):
-                return filepath.replace(texture_set, "")
-
-            fnames = [
-                remove_texture_set_token(
-                    output["output"], output["textureSet"]
-                )
-                for output in outputs
-            ]
 
         always_include_texture_set_name = False  # todo: make this configurable
         all_texture_sets = substance_painter.textureset.all_texture_sets()
@@ -89,13 +78,12 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         # Define the suffix we want to give this particular texture
         # set and set up a remapped product naming for it.
         suffix = ""
-        if not is_single_output:
-            if always_include_texture_set_name or len(all_texture_sets) > 1:
-                # More than one texture set, include texture set name
-                suffix += f".{texture_set_name}"
-            if texture_set.is_layered_material() and stack_name:
-                # More than one stack, include stack name
-                suffix += f".{stack_name}"
+        if always_include_texture_set_name or len(all_texture_sets) > 1:
+            # More than one texture set, include texture set name
+            suffix += f".{texture_set_name}"
+        if texture_set.is_layered_material() and stack_name:
+            # More than one stack, include stack name
+            suffix += f".{stack_name}"
 
         # Always include the map identifier
         map_identifier = strip_template(template)
@@ -161,9 +149,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         if instance.data["creator_attributes"].get("review"):
             image_instance.data["families"].append("review")
         if is_single_output:
-            image_instance.data["image_outputs"] = [
-                os.path.basename(output["filepath"]) for output in outputs
-            ]
+            image_instance.data["image_outputs"] = fnames
 
         image_instance.data["representations"] = [representation]
 

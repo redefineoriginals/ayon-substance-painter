@@ -20,7 +20,7 @@ def get_texture_outputs(staging_dir, image_outputs, has_udim=False):
     Returns:
         list: Texture outputs which are used for merging.
     """
-    if has_udim:
+    if has_udim and len(image_outputs) > 1:
         collections, remainder = clique.assemble(image_outputs, minimum_items=1)
         return [
             os.path.join(

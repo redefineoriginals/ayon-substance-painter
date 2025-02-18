@@ -120,7 +120,6 @@ class ExtractMakeTX(publish.Extractor,
             return
 
         representations: "list[dict]" = instance.data["representations"]
-
         # If a tx representation is present we skip extraction
         if any(repre["name"] == "tx" for repre in representations):
             return

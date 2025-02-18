@@ -8,8 +8,8 @@ from ayon_core.lib import (
 
 
 def get_texture_outputs(staging_dir, image_outputs):
-    """Getting the expected texture output(s) with/without udim sequence
-    before merging them with oiio tools.
+    """Getting the expected texture output(s) before merging
+    them with oiio tools.
 
     Args:
         staging_dir (str): staging dir

@@ -1,4 +1,3 @@
-import clique
 import os
 
 from ayon_core.pipeline import publish

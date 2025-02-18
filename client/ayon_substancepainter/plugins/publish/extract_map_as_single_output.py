@@ -48,8 +48,8 @@ def convert_texture_maps_as_single_output(staging_dir, source_image_outputs,
 
     log.info(f"{source_maps} composited as {dest_map}")
     oiio_cmd = oiio_tool_args + source_maps + [
-        "--paste:mergeroi=1",
-        "+0+0",
+        "--mosaic",
+        "{}x1".format(len(source_maps)),
         "-o",
        dest_map
     ]

@@ -8,43 +8,32 @@ from ayon_core.lib import (
 )
 
 
-def get_texture_outputs(staging_dir, image_outputs, has_udim=False):
+def get_texture_outputs(staging_dir, image_outputs):
     """Getting the expected texture output(s) with/without udim sequence
     before merging them with oiio tools.
 
     Args:
         staging_dir (str): staging dir
         image_outputs (list): source image outputs
-        has_udim (bool, optional): Is with UDIM. Defaults to False.
 
     Returns:
         list: Texture outputs which are used for merging.
     """
-    if has_udim and len(image_outputs) > 1:
-        collections, remainder = clique.assemble(image_outputs, minimum_items=1)
-        return [
-            os.path.join(
-                staging_dir,
-                collection.format(pattern="{head}{padding}{tail}")
-            )
-            for collection in collections
-        ]
-    else:
-        return [
-            os.path.join(staging_dir, output) for output in image_outputs
-        ]
+    return [
+        os.path.join(staging_dir, output) for output in image_outputs
+    ]
 
 
 def convert_texture_maps_as_single_output(staging_dir, source_image_outputs,
-                                          dest_image_outputs, has_udim=False,
-                                          log=None):
+                                          dest_image_outputs, log=None):
     oiio_tool_args = get_oiio_tool_args("oiiotool")
 
     source_maps = get_texture_outputs(
-        staging_dir, source_image_outputs, has_udim=has_udim)
-    dest_map = next(get_texture_outputs(
-        staging_dir, dest_image_outputs, has_udim=has_udim
-        ), None)
+        staging_dir, source_image_outputs)
+    dest_map = next(
+        (dest_texture for dest_texture in
+         get_texture_outputs(
+             staging_dir, dest_image_outputs)), None)
 
     log.info(f"{source_maps} composited as {dest_map}")
     oiio_cmd = oiio_tool_args + source_maps + [
@@ -75,7 +64,7 @@ class ExtractTexturesAsSingleOutput(publish.Extractor):
     settings_category = "substancepainter"
 
     # Run directly after textures export
-    order = publish.Extractor.order - 0.098
+    order = publish.Extractor.order - 0.0991
 
     def process(self, instance):
         if not instance.data.get("creator_attributes", {}).get(
@@ -89,20 +78,17 @@ class ExtractTexturesAsSingleOutput(publish.Extractor):
         repre = representations[0]
 
         staging_dir = instance.data["stagingDir"]
-        source_image_outputs = instance.data["image_outputs"]
+        dest_image_outputs = instance.data["image_outputs"]
         has_udim = False
-        dest_image_outputs = []
-        dest_files = repre["files"]
-        is_sequence = isinstance(dest_files, (list, tuple))
+        source_image = repre["files"]
+        is_sequence = isinstance(source_image, (list, tuple))
         if not is_sequence:
-            dest_image_outputs = [dest_image_outputs]
+            source_image_outputs = [source_image]
         else:
-            dest_image_outputs = dest_files
-        if "udim" in repre:
-            has_udim = True
+            source_image_outputs = source_image
+        repre["files"] = dest_image_outputs
 
         convert_texture_maps_as_single_output(
             staging_dir, source_image_outputs,
-            dest_image_outputs, has_udim=has_udim,
-            log=self.log
+            dest_image_outputs, log=self.log
         )

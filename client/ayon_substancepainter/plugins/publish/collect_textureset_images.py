@@ -149,7 +149,21 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         if instance.data["creator_attributes"].get("review"):
             image_instance.data["families"].append("review")
         if is_single_output:
-            image_instance.data["image_outputs"] = fnames
+            # Function to remove textureSet from filepath
+            def remove_texture_set_token(filepath, texture_set):
+                return filepath.replace(f".{texture_set}", "")
+
+            single_fnames = {
+                remove_texture_set_token(
+                    output["output"], output["udim"]
+                )
+                for output in outputs
+            }
+
+            image_instance.data["image_outputs"] = [
+                os.path.basename(fname) for fname in single_fnames
+            ]
+            self.log.debug(f"image_outputs: {fnames}")
 
         image_instance.data["representations"] = [representation]
 

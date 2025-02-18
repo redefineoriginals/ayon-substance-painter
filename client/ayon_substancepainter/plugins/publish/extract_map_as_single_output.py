@@ -79,14 +79,14 @@ class ExtractTexturesAsSingleOutput(publish.Extractor):
 
         staging_dir = instance.data["stagingDir"]
         dest_image_outputs = instance.data["image_outputs"]
-        has_udim = False
         source_image = repre["files"]
         is_sequence = isinstance(source_image, (list, tuple))
         if not is_sequence:
             source_image_outputs = [source_image]
         else:
             source_image_outputs = source_image
-        repre["files"] = dest_image_outputs
+        repre["files"] = dest_image_outputs[0]
+        repre.pop("udim", None)
 
         convert_texture_maps_as_single_output(
             staging_dir, source_image_outputs,

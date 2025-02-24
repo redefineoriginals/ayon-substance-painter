@@ -40,7 +40,9 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             )
 
         instance.data["exportConfig"] = config
-        maps = get_parsed_export_maps(config)
+        strip_texture_set = instance.data["creator_attributes"].get(
+            "flattenTextureSets", False)
+        maps = get_parsed_export_maps(config, strip_texture_set)
 
         # Let's break the instance into multiple instances to integrate
         # a product per generated texture or texture UDIM sequence
@@ -51,10 +53,12 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
                 self.create_image_instance(instance, template, outputs,
                                            task_entity=task_entity,
                                            texture_set_name=texture_set_name,
-                                           stack_name=stack_name)
+                                           stack_name=stack_name,
+                                           strip_texture_set=strip_texture_set)
 
     def create_image_instance(self, instance, template, outputs,
-                              task_entity, texture_set_name, stack_name):
+                              task_entity, texture_set_name, stack_name,
+                              strip_texture_set=False):
         """Create a new instance per image or UDIM sequence.
 
         The new instances will be of product type `image`.
@@ -63,14 +67,11 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
 
         context = instance.context
         first_filepath = outputs[0]["filepath"]
-        is_single_output = instance.data["creator_attributes"].get(
-            "flattenTextureSets", False)
         fnames = [os.path.basename(output["filepath"]) for output in outputs]
         ext = os.path.splitext(first_filepath)[1]
         assert ext.lstrip("."), f"No extension: {ext}"
 
-        always_include_texture_set_name = False  # todo: make this configurable
-        all_texture_sets = substance_painter.textureset.all_texture_sets()
+        # all_texture_sets = substance_painter.textureset.all_texture_sets()
         texture_set = substance_painter.textureset.TextureSet.from_name(
             texture_set_name
         )
@@ -78,7 +79,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         # Define the suffix we want to give this particular texture
         # set and set up a remapped product naming for it.
         suffix = ""
-        if always_include_texture_set_name or len(all_texture_sets) > 1:
+        if not strip_texture_set:
             # More than one texture set, include texture set name
             suffix += f".{texture_set_name}"
         if texture_set.is_layered_material() and stack_name:
@@ -148,22 +149,6 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         image_instance.data["families"] = [product_type, "textures"]
         if instance.data["creator_attributes"].get("review"):
             image_instance.data["families"].append("review")
-        if is_single_output:
-            # Function to remove textureSet from filepath
-            def remove_texture_set_token(filepath, texture_set):
-                return filepath.replace(f".{texture_set}", "")
-
-            single_fnames = {
-                remove_texture_set_token(
-                    output["output"], output["udim"]
-                )
-                for output in outputs
-            }
-
-            image_instance.data["image_outputs"] = [
-                os.path.basename(fname) for fname in single_fnames
-            ]
-            self.log.debug(f"image_outputs: {fnames}")
 
         image_instance.data["representations"] = [representation]
 
@@ -206,6 +191,9 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         creator_attrs = instance.data["creator_attributes"]
         preset_url = creator_attrs["exportPresetUrl"]
 
+        is_single_output = creator_attrs.get(
+            "flattenTextureSets", False)
+
         # Temporary directory purely for 'collecting' the expected output files
         # which is replaced in the export config by the
         # `CollectTextureSetStagingDir` plug-in below at a later collector
@@ -216,10 +204,11 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             use_local_temp=True)
 
         # See: https://substance3d.adobe.com/documentation/ptpy/api/substance_painter/export  # noqa
+        custom_export_preset = "Ayon_Custom_Preset"
         config = {  # noqa
             "exportShaderParams": True,
             "exportPath": temp_dir,
-            "defaultExportPreset": preset_url,
+            "defaultExportPreset": custom_export_preset if is_single_output else preset_url,
 
             # Custom overrides to the exporter
             "exportParameters": [
@@ -247,16 +236,18 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             for texture_set_name in export_texture_sets
         ]
 
-        # Consider None values from the creator attributes optionals
         for override in config["exportParameters"]:
             parameters = override.get("parameters")
             for key, value in dict(parameters).items():
                 if value is None:
                     parameters.pop(key)
+
         channel_layer = creator_attrs.get("exportChannel", [])
-        if channel_layer:
-            maps = get_filtered_export_preset(preset_url, channel_layer)
-            config.update(maps)
+        maps = get_filtered_export_preset(
+            preset_url, channel_layer, is_single_output,
+            custom_export_preset=custom_export_preset
+        )
+        config.update(maps)
         return config
 
 

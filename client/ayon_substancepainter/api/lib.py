@@ -224,7 +224,7 @@ def _templates_to_regex(templates,
                         colorspaces,
                         project,
                         mesh):
-    """Return regex based on a Substance Painter expot filename template.
+    """Return regex based on a Substance Painter export filename template.
 
     This converts Substance Painter export filename templates like
     `$mesh_$textureSet_BaseColor(_$colorSpace)(.$udim)` into a regex
@@ -363,7 +363,7 @@ def strip_template(template, strip="._ "):
     return result
 
 
-def get_parsed_export_maps(config):
+def get_parsed_export_maps(config, strip_texture_set=False):
     """Return Export Config's expected output textures with parsed data.
 
     This tries to parse the texture outputs using a Python API export config.
@@ -438,9 +438,13 @@ def get_parsed_export_maps(config):
             stack_path = f"{texture_set}/{stack}"
         else:
             stack_path = texture_set
-
-        stack_templates = list(templates[stack_path].keys())
-
+        if strip_texture_set:
+            stack_templates = list(
+                template.replace("_$textureSet", "")
+                for template in templates[stack_path].keys()
+            )
+        else:
+            stack_templates = list(templates[stack_path].keys())
         template_regex = _templates_to_regex(stack_templates,
                                              texture_set=texture_set,
                                              colorspaces=project_colorspaces,
@@ -463,14 +467,16 @@ def get_parsed_export_maps(config):
             filename = filepath[len(export_path):]
 
             for template, regex in template_regex.items():
+                if strip_texture_set:
+                    filename = filename.replace(f"_{texture_set}", "")
+                    template = template.replace("_$textureSet", "")
+                    filepath = filepath.replace(stack_path, "")
                 match = regex.match(filename)
                 if match:
                     parsed = match.groupdict(default={})
-
                     # Include some special outputs for convenience
-                    parsed["filepath"] = filepath
                     parsed["output"] = filename
-
+                    parsed["filepath"] = filepath
                     stack_results[template].append(parsed)
                     break
             else:
@@ -653,13 +659,17 @@ def prompt_new_file_with_mesh(mesh_filepath):
     return project_mesh
 
 
-def get_filtered_export_preset(export_preset_name, channel_type_names):
+def get_filtered_export_preset(export_preset_name, channel_type_names,
+                               strip_texture_set=False,
+                               custom_export_preset="Ayon_Custom_Preset"):
     """Return export presets included with specific channels
     requested by users.
 
     Args:
         export_preset_name (str): Name of export preset
         channel_type_list (list): A list of channel type requested by users
+        strip_texture_set=False (bool): strip texture set name
+        custom_export_preset (str): custom export preset name
 
     Returns:
         dict: export preset data
@@ -681,12 +691,19 @@ def get_filtered_export_preset(export_preset_name, channel_type_names):
 
     maps = preset.list_output_maps()
     for channel_map in maps:
-        for channel_name in channel_type_names:
-            if not channel_map.get("fileName"):
-                continue
+        if strip_texture_set:
+            old_channel_map = channel_map["fileName"]
+            channel_map["fileName"] = old_channel_map.replace("_$textureSet", "")
+            export_preset_name = custom_export_preset
+        if channel_type_names:
+            for channel_name in channel_type_names:
+                if not channel_map.get("fileName"):
+                    continue
 
-            if channel_name in channel_map["fileName"]:
-                target_maps.append(channel_map)
+                if channel_name in channel_map["fileName"]:
+                    target_maps.append(channel_map)
+        else:
+            target_maps.append(channel_map)
     # Create a new preset
     return {
         "exportPresets": [

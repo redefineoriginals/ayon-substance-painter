@@ -208,7 +208,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         config = {  # noqa
             "exportShaderParams": True,
             "exportPath": temp_dir,
-            "defaultExportPreset": custom_export_preset if is_single_output else preset_url,
+            "defaultExportPreset": preset_url,
 
             # Custom overrides to the exporter
             "exportParameters": [
@@ -281,3 +281,30 @@ class CollectTextureSetStagingDir(pyblish.api.InstancePlugin):
             # Update representation staging dir.
             for repre in image_instance.data["representations"]:
                 repre["stagingDir"] = staging_dir
+
+
+class CollectCustomExportPresetUrl(pyblish.api.InstancePlugin):
+    """Collect Export Preset Url when single texture output enabled."""
+
+    label = "Collect Export Preset for Single Texture Output"
+    hosts = ["substancepainter"]
+    families = ["textureSet"]
+
+    # Run after CollectManagedStagingDir
+    order = pyblish.api.CollectorOrder + 0.4992
+
+    def process(self, instance):
+        # Update export config
+        if not instance.data["creator_attributes"].get(
+            "flattenTextureSets", False):
+            return
+
+        config = instance.data["exportConfig"]
+        export_config = copy.deepcopy(config)
+        export_config["defaultExportPreset"] = export_config["exportPresets"]["name"]
+        instance.data["exportConfig"] = export_config
+        # Update image instances and their representations
+        for image_instance in instance:
+
+            # Include the updated config
+            image_instance.data["exportConfig"] = export_config

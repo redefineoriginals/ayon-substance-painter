@@ -204,7 +204,6 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             use_local_temp=True)
 
         # See: https://substance3d.adobe.com/documentation/ptpy/api/substance_painter/export  # noqa
-        custom_export_preset = "Ayon_Custom_Preset"
         config = {  # noqa
             "exportShaderParams": True,
             "exportPath": temp_dir,
@@ -224,7 +223,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         }
         # Create the list of Texture Sets to export.
         export_texture_sets = creator_attrs.get("exportTextureSets", [])
-        if not export_texture_sets:
+        if not export_texture_sets or is_single_output:
             # Export all texture sets
             export_texture_sets = [
                 texture_set.name() for texture_set in
@@ -244,8 +243,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
 
         channel_layer = creator_attrs.get("exportChannel", [])
         maps = get_filtered_export_preset(
-            preset_url, channel_layer, is_single_output,
-            custom_export_preset=custom_export_preset
+            preset_url, channel_layer, is_single_output
         )
         config.update(maps)
         return config
@@ -301,12 +299,11 @@ class CollectCustomExportPresetUrl(pyblish.api.InstancePlugin):
 
         config = instance.data["exportConfig"]
         export_config = copy.deepcopy(config)
-        self.log.debug(export_config)
-        export_preset_url_name = next(
-            (export_preset["name"]
-             for export_preset in export_config["exportPresets"]
-             ), None)
-        export_config["defaultExportPreset"] = export_preset_url_name
+        custom_export_preset = "Ayon_Custom_Preset"
+        for export_preset in export_config["exportPresets"]:
+            export_preset["name"] = custom_export_preset
+
+        export_config["defaultExportPreset"] = custom_export_preset
         instance.data["exportConfig"] = export_config
         # Update image instances and their representations
         for image_instance in instance:

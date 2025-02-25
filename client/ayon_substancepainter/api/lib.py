@@ -660,8 +660,7 @@ def prompt_new_file_with_mesh(mesh_filepath):
 
 
 def get_filtered_export_preset(export_preset_name, channel_type_names,
-                               strip_texture_set=False,
-                               custom_export_preset="Ayon_Custom_Preset"):
+                               strip_texture_set=False):
     """Return export presets included with specific channels
     requested by users.
 

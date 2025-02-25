@@ -301,7 +301,12 @@ class CollectCustomExportPresetUrl(pyblish.api.InstancePlugin):
 
         config = instance.data["exportConfig"]
         export_config = copy.deepcopy(config)
-        export_config["defaultExportPreset"] = export_config["exportPresets"]["name"]
+        self.log.debug(export_config)
+        export_preset_url_name = next(
+            (export_preset["name"]
+             for export_preset in export_config["exportPresets"]
+             ), None)
+        export_config["defaultExportPreset"] = export_preset_url_name
         instance.data["exportConfig"] = export_config
         # Update image instances and their representations
         for image_instance in instance:

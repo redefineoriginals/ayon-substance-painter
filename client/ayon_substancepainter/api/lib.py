@@ -675,6 +675,7 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
         dict: export preset data
     """
 
+    all_output_maps = []
     target_maps = []
 
     export_presets = get_export_presets()
@@ -694,7 +695,12 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
         if strip_texture_set:
             old_channel_map = channel_map["fileName"]
             channel_map["fileName"] = old_channel_map.replace("_$textureSet", "")
-            export_preset_name = custom_export_preset
+            # export_preset_name = custom_export_preset
+            all_output_maps.append(channel_map)
+        else:
+            all_output_maps = maps
+
+    for channel_map in all_output_maps:
         if channel_type_names:
             for channel_name in channel_type_names:
                 if not channel_map.get("fileName"):
@@ -703,7 +709,7 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
                 if channel_name in channel_map["fileName"]:
                     target_maps.append(channel_map)
         else:
-            target_maps.append(channel_map)
+            target_maps = all_output_maps
     # Create a new preset
     return {
         "exportPresets": [

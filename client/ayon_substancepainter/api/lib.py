@@ -519,12 +519,12 @@ def get_parsed_output_maps_as_single_output(result):
         dict: parsed output maps as single output
     """
     result_with_single_output = {}
+    result_with_single_output[("", "")] = {}
     for template_maps in result.values():
         for template, outputs in template_maps.items():
-            result_with_single_output.update({
-                ("", ""):{
-                template: outputs
-            }})
+            if template not in result_with_single_output[("", "")]:
+                result_with_single_output[("", "")][template] = []
+            result_with_single_output[("", "")][template].extend(outputs)
     return result_with_single_output
 
 

@@ -465,27 +465,67 @@ def get_parsed_export_maps(config, strip_texture_set=False):
                 f"Filepath {filepath} must start with folder {export_path}"
             )
             filename = filepath[len(export_path):]
-
-            for template, regex in template_regex.items():
-                if strip_texture_set:
-                    filename = filename.replace(f"_{texture_set}", "")
-                    template = template.replace("_$textureSet", "")
-                    filepath = filepath.replace(stack_path, "")
-                match = regex.match(filename)
-                if match:
-                    parsed = match.groupdict(default={})
-                    # Include some special outputs for convenience
-                    parsed["output"] = filename
-                    parsed["filepath"] = filepath
-                    stack_results[template].append(parsed)
-                    break
-            else:
-                raise ValueError(f"Unable to match {filename} against any "
-                                 f"template in: {list(template_regex.keys())}")
+            stack_results = get_stack_results(stack_results, template_regex,
+                                              filename, filepath,
+                                              texture_set, stack_path,
+                                              strip_texture_set=strip_texture_set)
 
         result[key] = dict(stack_results)
+    if strip_texture_set:
+        result = get_parsed_output_maps_as_single_output(result)
 
     return result
+
+
+def get_stack_results(stack_results, template_regex,
+                      filename, filepath,
+                      texture_set, stack_path,
+                      strip_texture_set=False):
+    """Function to get filename and filepath for parsed outputs
+    """
+    # Strip texture_set and stack_path if required
+    if strip_texture_set:
+        filename = filename.replace(f"_{texture_set}", "")
+        filepath = filepath.replace(stack_path, "")
+        template_regex = {
+            template.replace("_$textureSet", ""): regex
+            for template, regex in template_regex.items()
+        }
+
+    # Attempt to match the filename against each template
+    for template, regex in template_regex.items():
+        match = regex.match(filename)
+        if match:
+            parsed = match.groupdict(default={})
+            parsed["output"] = filename  # Add filename for convenience
+            parsed["filepath"] = filepath  # Add filepath for convenience
+            stack_results[template].append(parsed)
+            break
+    else:
+        if not strip_texture_set:
+            # Raise an error if no match is found
+            raise ValueError(f"Unable to match {filename} against any "
+                             f"template in: {list(template_regex.keys())}")
+    return stack_results
+
+
+def get_parsed_output_maps_as_single_output(result):
+    """Get parsed output maps as single output
+
+    Args:
+        result (dict): all parsed output maps
+
+    Returns:
+        dict: parsed output maps as single output
+    """
+    result_with_single_output = {}
+    for template_maps in result.values():
+        for template, outputs in template_maps.items():
+            result_with_single_output.update({
+                ("", ""):{
+                template: outputs
+            }})
+    return result_with_single_output
 
 
 def load_shelf(path, name=None):

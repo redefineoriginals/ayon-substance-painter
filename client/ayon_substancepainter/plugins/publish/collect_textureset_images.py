@@ -43,7 +43,6 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         strip_texture_set = instance.data["creator_attributes"].get(
             "flattenTextureSets", False)
         maps = get_parsed_export_maps(config, strip_texture_set)
-
         # Let's break the instance into multiple instances to integrate
         # a product per generated texture or texture UDIM sequence
         for (texture_set_name, stack_name), template_maps in maps.items():
@@ -71,20 +70,20 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         ext = os.path.splitext(first_filepath)[1]
         assert ext.lstrip("."), f"No extension: {ext}"
 
-        # all_texture_sets = substance_painter.textureset.all_texture_sets()
-        texture_set = substance_painter.textureset.TextureSet.from_name(
-            texture_set_name
-        )
 
+        # all_texture_sets = substance_painter.textureset.all_texture_sets()
         # Define the suffix we want to give this particular texture
         # set and set up a remapped product naming for it.
         suffix = ""
         if not strip_texture_set:
+            texture_set = substance_painter.textureset.TextureSet.from_name(
+                texture_set_name
+            )
             # More than one texture set, include texture set name
             suffix += f".{texture_set_name}"
-        if texture_set.is_layered_material() and stack_name:
-            # More than one stack, include stack name
-            suffix += f".{stack_name}"
+            if texture_set.is_layered_material() and stack_name:
+                # More than one stack, include stack name
+                suffix += f".{stack_name}"
 
         # Always include the map identifier
         map_identifier = strip_template(template)

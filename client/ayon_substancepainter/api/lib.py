@@ -467,7 +467,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
             filename = filepath[len(export_path):]
             stack_results = get_stack_results(stack_results, template_regex,
                                               filename, filepath,
-                                              texture_set, stack_path,
+                                              texture_set,
                                               strip_texture_set=strip_texture_set)
 
         result[key] = dict(stack_results)
@@ -479,14 +479,14 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
 def get_stack_results(stack_results, template_regex,
                       filename, filepath,
-                      texture_set, stack_path,
+                      texture_set,
                       strip_texture_set=False):
     """Function to get filename and filepath for parsed outputs
     """
     # Strip texture_set and stack_path if required
     if strip_texture_set:
         filename = filename.replace(f"_{texture_set}", "")
-        filepath = filepath.replace(stack_path, "")
+        filepath = filepath.replace(f"_{texture_set}", "")
         template_regex = {
             template.replace("_$textureSet", ""): regex
             for template, regex in template_regex.items()

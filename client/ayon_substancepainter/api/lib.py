@@ -787,6 +787,7 @@ def set_layer_stack_opacity(node_ids, channel_types):
     original_opacity_values = []
     for node in excluded_nodes:
         for channel in channel_types:
+            channel = channel.replace("_", "")
             chan = getattr(substance_painter.textureset.ChannelType, channel)
             original_opacity_values.append((chan, node.get_opacity(chan)))
     try:

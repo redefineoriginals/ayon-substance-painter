@@ -222,7 +222,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         }
         # Create the list of Texture Sets to export.
         export_texture_sets = creator_attrs.get("exportTextureSets", [])
-        if not export_texture_sets or is_single_output:
+        if not export_texture_sets:
             # Export all texture sets
             export_texture_sets = [
                 texture_set.name() for texture_set in

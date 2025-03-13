@@ -224,7 +224,7 @@ def _templates_to_regex(templates,
                         colorspaces,
                         project,
                         mesh):
-    """Return regex based on a Substance Painter expot filename template.
+    """Return regex based on a Substance Painter export filename template.
 
     This converts Substance Painter export filename templates like
     `$mesh_$textureSet_BaseColor(_$colorSpace)(.$udim)` into a regex
@@ -363,7 +363,7 @@ def strip_template(template, strip="._ "):
     return result
 
 
-def get_parsed_export_maps(config):
+def get_parsed_export_maps(config, strip_texture_set=False):
     """Return Export Config's expected output textures with parsed data.
 
     This tries to parse the texture outputs using a Python API export config.
@@ -438,9 +438,13 @@ def get_parsed_export_maps(config):
             stack_path = f"{texture_set}/{stack}"
         else:
             stack_path = texture_set
-
-        stack_templates = list(templates[stack_path].keys())
-
+        if strip_texture_set:
+            stack_templates = list(
+                template.replace("_$textureSet", "")
+                for template in templates[stack_path].keys()
+            )
+        else:
+            stack_templates = list(templates[stack_path].keys())
         template_regex = _templates_to_regex(stack_templates,
                                              texture_set=texture_set,
                                              colorspaces=project_colorspaces,
@@ -461,25 +465,67 @@ def get_parsed_export_maps(config):
                 f"Filepath {filepath} must start with folder {export_path}"
             )
             filename = filepath[len(export_path):]
-
-            for template, regex in template_regex.items():
-                match = regex.match(filename)
-                if match:
-                    parsed = match.groupdict(default={})
-
-                    # Include some special outputs for convenience
-                    parsed["filepath"] = filepath
-                    parsed["output"] = filename
-
-                    stack_results[template].append(parsed)
-                    break
-            else:
-                raise ValueError(f"Unable to match {filename} against any "
-                                 f"template in: {list(template_regex.keys())}")
+            stack_results = get_stack_results(stack_results, template_regex,
+                                              filename, filepath,
+                                              texture_set,
+                                              strip_texture_set=strip_texture_set)
 
         result[key] = dict(stack_results)
+    if strip_texture_set:
+        result = get_parsed_output_maps_as_single_output(result)
 
     return result
+
+
+def get_stack_results(stack_results, template_regex,
+                      filename, filepath,
+                      texture_set,
+                      strip_texture_set=False):
+    """Function to get filename and filepath for parsed outputs
+    """
+    # Strip texture_set and stack_path if required
+    if strip_texture_set:
+        filename = filename.replace(f"_{texture_set}", "")
+        filepath = filepath.replace(f"_{texture_set}", "")
+        template_regex = {
+            template.replace("_$textureSet", ""): regex
+            for template, regex in template_regex.items()
+        }
+
+    # Attempt to match the filename against each template
+    for template, regex in template_regex.items():
+        match = regex.match(filename)
+        if match:
+            parsed = match.groupdict(default={})
+            parsed["output"] = filename  # Add filename for convenience
+            parsed["filepath"] = filepath  # Add filepath for convenience
+            stack_results[template].append(parsed)
+            break
+    else:
+        if not strip_texture_set:
+            # Raise an error if no match is found
+            raise ValueError(f"Unable to match {filename} against any "
+                             f"template in: {list(template_regex.keys())}")
+    return stack_results
+
+
+def get_parsed_output_maps_as_single_output(result):
+    """Get parsed output maps as single output
+
+    Args:
+        result (dict): all parsed output maps
+
+    Returns:
+        dict: parsed output maps as single output
+    """
+    result_with_single_output = {}
+    result_with_single_output[("", "")] = {}
+    for template_maps in result.values():
+        for template, outputs in template_maps.items():
+            if template not in result_with_single_output[("", "")]:
+                result_with_single_output[("", "")][template] = []
+            result_with_single_output[("", "")][template].extend(outputs)
+    return result_with_single_output
 
 
 def load_shelf(path, name=None):
@@ -653,18 +699,22 @@ def prompt_new_file_with_mesh(mesh_filepath):
     return project_mesh
 
 
-def get_filtered_export_preset(export_preset_name, channel_type_names):
+def get_filtered_export_preset(export_preset_name, channel_type_names,
+                               strip_texture_set=False):
     """Return export presets included with specific channels
     requested by users.
 
     Args:
         export_preset_name (str): Name of export preset
         channel_type_list (list): A list of channel type requested by users
+        strip_texture_set=False (bool): strip texture set name
+        custom_export_preset (str): custom export preset name
 
     Returns:
         dict: export preset data
     """
 
+    all_output_maps = []
     target_maps = []
 
     export_presets = get_export_presets()
@@ -681,12 +731,24 @@ def get_filtered_export_preset(export_preset_name, channel_type_names):
 
     maps = preset.list_output_maps()
     for channel_map in maps:
-        for channel_name in channel_type_names:
-            if not channel_map.get("fileName"):
-                continue
+        if strip_texture_set:
+            old_channel_map = channel_map["fileName"]
+            channel_map["fileName"] = old_channel_map.replace("_$textureSet", "")
+            # export_preset_name = custom_export_preset
+            all_output_maps.append(channel_map)
+        else:
+            all_output_maps = maps
 
-            if channel_name in channel_map["fileName"]:
-                target_maps.append(channel_map)
+    for channel_map in all_output_maps:
+        if channel_type_names:
+            for channel_name in channel_type_names:
+                if not channel_map.get("fileName"):
+                    continue
+
+                if channel_name in channel_map["fileName"]:
+                    target_maps.append(channel_map)
+        else:
+            target_maps = all_output_maps
     # Create a new preset
     return {
         "exportPresets": [
@@ -725,6 +787,7 @@ def set_layer_stack_opacity(node_ids, channel_types):
     original_opacity_values = []
     for node in excluded_nodes:
         for channel in channel_types:
+            channel = channel.replace("_", "")
             chan = getattr(substance_painter.textureset.ChannelType, channel)
             original_opacity_values.append((chan, node.get_opacity(chan)))
     try:

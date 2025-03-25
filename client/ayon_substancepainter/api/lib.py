@@ -47,16 +47,17 @@ def get_export_presets():
                                    key=lambda x: x[1]))
 
     # Add default built-ins at the start
-    # TODO: find the built-ins automatically; scraped with https://gist.github.com/BigRoy/97150c7c6f0a0c916418207b9a2bc8f1  # noqa
+    # TODO: find the built-ins automatically; scraped with
+    #  https://gist.github.com/BigRoy/97150c7c6f0a0c916418207b9a2bc8f1
     result = {
-        "export-preset-generator://viewport2d": "2D View",  # noqa
-        "export-preset-generator://doc-channel-normal-no-alpha": "Document channels + Normal + AO (No Alpha)",  # noqa
-        "export-preset-generator://doc-channel-normal-with-alpha": "Document channels + Normal + AO (With Alpha)",  # noqa
-        "export-preset-generator://sketchfab": "Sketchfab",  # noqa
-        "export-preset-generator://adobe-standard-material": "Substance 3D Stager",  # noqa
-        "export-preset-generator://usd": "USD PBR Metal Roughness",  # noqa
-        "export-preset-generator://gltf": "glTF PBR Metal Roughness",  # noqa
-        "export-preset-generator://gltf-displacement": "glTF PBR Metal Roughness + Displacement texture (experimental)"  # noqa
+        "export-preset-generator://viewport2d": "2D View",  # noqa E501
+        "export-preset-generator://doc-channel-normal-no-alpha": "Document channels + Normal + AO (No Alpha)",  # noqa E501
+        "export-preset-generator://doc-channel-normal-with-alpha": "Document channels + Normal + AO (With Alpha)",  # noqa E501
+        "export-preset-generator://sketchfab": "Sketchfab",  # noqa E501
+        "export-preset-generator://adobe-standard-material": "Substance 3D Stager",  # noqa E501
+        "export-preset-generator://usd": "USD PBR Metal Roughness",  # noqa E501
+        "export-preset-generator://gltf": "glTF PBR Metal Roughness",  # noqa E501
+        "export-preset-generator://gltf-displacement": "glTF PBR Metal Roughness + Displacement texture (experimental)"  # noqa E501
     }
     result.update(export_templates)
     return result
@@ -175,12 +176,12 @@ def get_export_templates(config, format="png", strip_folder=True):
     Example output:
     {
         "DefaultMaterial": {
-            "$textureSet_BaseColor(_$colorSpace)(.$udim)": "DefaultMaterial_BaseColor_ACES - ACEScg.1002.png",   # noqa
-            "$textureSet_Emissive(_$colorSpace)(.$udim)": "DefaultMaterial_Emissive_ACES - ACEScg.1002.png",     # noqa
-            "$textureSet_Height(_$colorSpace)(.$udim)": "DefaultMaterial_Height_Utility - Raw.1002.png",         # noqa
-            "$textureSet_Metallic(_$colorSpace)(.$udim)": "DefaultMaterial_Metallic_Utility - Raw.1002.png",     # noqa
-            "$textureSet_Normal(_$colorSpace)(.$udim)": "DefaultMaterial_Normal_Utility - Raw.1002.png",         # noqa
-            "$textureSet_Roughness(_$colorSpace)(.$udim)": "DefaultMaterial_Roughness_Utility - Raw.1002.png"    # noqa
+            "$textureSet_BaseColor(_$colorSpace)(.$udim)": "DefaultMaterial_BaseColor_ACES - ACEScg.1002.png",
+            "$textureSet_Emissive(_$colorSpace)(.$udim)": "DefaultMaterial_Emissive_ACES - ACEScg.1002.png",
+            "$textureSet_Height(_$colorSpace)(.$udim)": "DefaultMaterial_Height_Utility - Raw.1002.png",    
+            "$textureSet_Metallic(_$colorSpace)(.$udim)": "DefaultMaterial_Metallic_Utility - Raw.1002.png",
+            "$textureSet_Normal(_$colorSpace)(.$udim)": "DefaultMaterial_Normal_Utility - Raw.1002.png",    
+            "$textureSet_Roughness(_$colorSpace)(.$udim)": "DefaultMaterial_Roughness_Utility - Raw.1002.png"
         }
     }
 
@@ -193,7 +194,7 @@ def get_export_templates(config, format="png", strip_folder=True):
     Returns:
         dict: The expected output maps.
 
-    """
+    """  # noqa E501
     folder = config["exportPath"].replace("\\", "/")
     preset = config["defaultExportPreset"]
     cmd = f'alg.mapexport.getPathsExportDocumentMaps("{preset}", "{folder}", "{format}")'  # noqa
@@ -733,7 +734,9 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
     for channel_map in maps:
         if strip_texture_set:
             old_channel_map = channel_map["fileName"]
-            channel_map["fileName"] = old_channel_map.replace("_$textureSet", "")
+            channel_map["fileName"] = old_channel_map.replace(
+                "_$textureSet", ""
+            )
             # export_preset_name = custom_export_preset
             all_output_maps.append(channel_map)
         else:

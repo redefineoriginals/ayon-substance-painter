@@ -38,9 +38,13 @@ class ExtractTextures(publish.Extractor,
                 )
 
             # Log what files we generated
-            for (texture_set_name, stack_name), maps in result.textures.items():
+            for (texture_set_name, stack_name), maps in (
+                result.textures.items()
+            ):
                 # Log our texture outputs
-                self.log.info(f"Exported stack: {texture_set_name} {stack_name}")
+                self.log.info(
+                    f"Exported stack: {texture_set_name} {stack_name}"
+                )
                 for texture_map in maps:
                     self.log.info(f"Exported texture: {texture_map}")
 

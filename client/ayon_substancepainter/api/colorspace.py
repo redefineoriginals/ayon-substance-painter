@@ -4,10 +4,10 @@ Adobe Substance 3D Painter supports OCIO color management using a per project
 configuration. Output color spaces are defined at the project level
 
 More information see:
-  - https://substance3d.adobe.com/documentation/spdoc/color-management-223053233.html  # noqa
-  - https://substance3d.adobe.com/documentation/spdoc/color-management-with-opencolorio-225969419.html  # noqa
+  - https://substance3d.adobe.com/documentation/spdoc/color-management-223053233.html
+  - https://substance3d.adobe.com/documentation/spdoc/color-management-with-opencolorio-225969419.html
 
-"""
+"""  # noqa E501
 import substance_painter.export
 import substance_painter.js
 import json

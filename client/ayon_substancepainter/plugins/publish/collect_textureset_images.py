@@ -51,7 +51,8 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
                 self.log.info(f"Processing {template}")
                 # check $uvTileName included as a key value in outputs dict
                 outputs_with_tilenames = [
-                    output for output in outputs if output.get("uvTileName", "")
+                    output for output in outputs
+                    if output.get("uvTileName", "")
                 ]
                 if outputs_with_tilenames:
                     for output in outputs_with_tilenames:
@@ -124,6 +125,11 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
     def create_image_instance_by_tilename(self, instance, template, output,
                                           task_entity, texture_set_name,
                                           stack_name, strip_texture_set=False):
+        """Create a new instance per image by $uvTileNAme.
+
+        The new instances will be of product type `image`.
+
+        """
         first_filepath = output["filepath"]
         fnames = os.path.basename(output["filepath"])
         ext = os.path.splitext(first_filepath)[1]

@@ -377,7 +377,8 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
     This tries to parse the texture outputs using a Python API export config.
 
-    Parses template keys: $project, $mesh, $textureSet, $colorSpace, $udim, $uvTileName
+    Parses template keys: $project, $mesh, $textureSet, $colorSpace,
+                          $udim, $uvTileName
 
     Example:
     {("DefaultMaterial", ""): {

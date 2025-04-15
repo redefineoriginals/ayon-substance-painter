@@ -519,10 +519,6 @@ def get_stack_results(stack_results, template_regex,
     return stack_results
 
 
-def get_uvtilename_from_token(stack_results):
-    pass
-
-
 def get_parsed_output_maps_as_single_output(result):
     """Get parsed output maps as single output
 

@@ -272,6 +272,10 @@ def _templates_to_regex(templates,
         "$udim": "([0-9]{4})"
     }
 
+    version_info = substance_painter.application.version_info()
+    if version_info >= (11, 0, 1):
+        key_matches["$uvTileName"] = r"(\s*[^\W_](?:[\w -]*(?<! )))"
+
     # Turn the templates into regexes
     regexes = {}
     for template in templates:
@@ -335,6 +339,10 @@ def strip_template(template, strip="._ "):
     # Return only characters that were part of the template that were static.
     # Remove all keys
     keys = ["$project", "$mesh", "$textureSet", "$udim", "$colorSpace"]
+    version_info = substance_painter.application.version_info()
+    if version_info >= (11, 0, 1):
+        keys.append("$uvTileName")
+
     stripped_template = template
     for key in keys:
         stripped_template = stripped_template.replace(key, "")
@@ -369,7 +377,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
     This tries to parse the texture outputs using a Python API export config.
 
-    Parses template keys: $project, $mesh, $textureSet, $colorSpace, $udim
+    Parses template keys: $project, $mesh, $textureSet, $colorSpace, $udim, $uvTileName
 
     Example:
     {("DefaultMaterial", ""): {
@@ -508,6 +516,10 @@ def get_stack_results(stack_results, template_regex,
             raise ValueError(f"Unable to match {filename} against any "
                              f"template in: {list(template_regex.keys())}")
     return stack_results
+
+
+def get_uvtilename_from_token(stack_results):
+    pass
 
 
 def get_parsed_output_maps_as_single_output(result):

@@ -274,6 +274,14 @@ def _templates_to_regex(templates,
 
     version_info = substance_painter.application.version_info()
     if version_info >= (11, 0, 1):
+        # \s* pattern would match whitespace characters from the start
+        # [^\W_] requires at least one word character that's no underscore
+        # [\w -]* captures any word character, space or hyphen
+        # (?<! ) ensure the word does not end with space
+        # The pattern handles the cases such as "Table Top", "Table_Top",
+        # "Table-Top", "TableTOp", "Table Top". But it cannot handle
+        # some extreme scenarios such as "TableTop " or " TableTop"
+
         key_matches["$uvTileName"] = r"(\s*[^\W_](?:[\w -]*(?<! )))"
 
     # Turn the templates into regexes

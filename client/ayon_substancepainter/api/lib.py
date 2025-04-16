@@ -248,6 +248,7 @@ def _templates_to_regex(templates,
         colorspaces (list): The colorspaces defined in the current project.
         project (str): Filepath of current substance project.
         mesh (str): Path to mesh file used in current project.
+        mesh (str): The uvTileName set in the template in current project.
 
     Returns:
         dict: Template: Template regex pattern
@@ -263,10 +264,7 @@ def _templates_to_regex(templates,
         # No colorspace support enabled
         colorspace_match = ""
 
-    if tile_names and any(tile_names):
-        tile_name_match = "|".join(tile_names)
-    else:
-        tile_name_match = ""
+    tile_name_match = "|".join(tile_names) if tile_names else ""
 
     # Key to regex valid search values
     key_matches = {
@@ -445,17 +443,18 @@ def get_parsed_export_maps(config, strip_texture_set=False):
     # Parse the outputs
     result = {}
     for key, filepaths in outputs.items():
-        texture_set, stack = key
+        texture_set_name, stack = key
 
-        texture_name = (
-            substance_painter.textureset.TextureSet.from_name(texture_set)
+        texture_set = (
+            substance_painter.textureset.TextureSet.from_name(
+                texture_set_name)
         )
-        tile_names = set(tile.name for tile in texture_name.all_uv_tiles())
+        tile_names = set(tile.name for tile in texture_set.all_uv_tiles())
 
         if stack:
-            stack_path = f"{texture_set}/{stack}"
+            stack_path = f"{texture_set_name}/{stack}"
         else:
-            stack_path = texture_set
+            stack_path = texture_set_name
         if strip_texture_set:
             stack_templates = list(
                 template.replace("_$textureSet", "")
@@ -464,7 +463,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
         else:
             stack_templates = list(templates[stack_path].keys())
         template_regex = _templates_to_regex(stack_templates,
-                                             texture_set=texture_set,
+                                             texture_set=texture_set_name,
                                              colorspaces=project_colorspaces,
                                              mesh=project_mesh_path,
                                              project=project_path,
@@ -485,7 +484,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
             filename = filepath[len(export_path):]
             stack_results = get_stack_results(stack_results, template_regex,
                                               filename, filepath,
-                                              texture_set,
+                                              texture_set_name,
                                               strip_texture_set=strip_texture_set)
 
         result[key] = dict(stack_results)

@@ -48,7 +48,9 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         for (texture_set_name, stack_name), template_maps in maps.items():
             self.log.info(f"Processing {texture_set_name}/{stack_name}")
             for (template, tilename), outputs in template_maps.items():
-                self.log.info(f"Processing {template} with tile name {tilename}")             # noqa: E501
+                self.log.info(
+                    f"Processing {template} with tile name {tilename}"
+                )
                 self.create_image_instance(instance, template, outputs,
                                            task_entity=task_entity,
                                            texture_set_name=texture_set_name,

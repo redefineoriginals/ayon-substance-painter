@@ -46,9 +46,9 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         # Let's break the instance into multiple instances to integrate
         # a product per generated texture or texture UDIM sequence
         for (texture_set_name, stack_name), template_maps in maps.items():
-            self.log.info(f"Processing {texture_set_name}/{stack_name}")
+            self.log.info(f"Processing {texture_set_name}/{stack_name}")            # noqa: E501
             for (template, tilename), outputs in template_maps.items():
-                self.log.info(f"Processing {template} with UV tile name {tilename}")
+                self.log.info(f"Processing {template} with tile name {tilename}")
                 self.create_image_instance(instance, template, outputs,
                                            task_entity=task_entity,
                                            texture_set_name=texture_set_name,

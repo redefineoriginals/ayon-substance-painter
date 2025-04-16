@@ -178,7 +178,7 @@ def get_export_templates(config, format="png", strip_folder=True):
         "DefaultMaterial": {
             "$textureSet_BaseColor(_$colorSpace)(.$udim)": "DefaultMaterial_BaseColor_ACES - ACEScg.1002.png",
             "$textureSet_Emissive(_$colorSpace)(.$udim)": "DefaultMaterial_Emissive_ACES - ACEScg.1002.png",
-            "$textureSet_Height(_$colorSpace)(.$udim)": "DefaultMaterial_Height_Utility - Raw.1002.png",    
+            "$textureSet_Height(_$colorSpace)(.$udim)": "DefaultMaterial_Height_Utility - Raw.1002.png",
             "$textureSet_Metallic(_$colorSpace)(.$udim)": "DefaultMaterial_Metallic_Utility - Raw.1002.png",
             "$textureSet_Normal(_$colorSpace)(.$udim)": "DefaultMaterial_Normal_Utility - Raw.1002.png",    
             "$textureSet_Roughness(_$colorSpace)(.$udim)": "DefaultMaterial_Roughness_Utility - Raw.1002.png"
@@ -208,7 +208,6 @@ def get_export_templates(config, format="png", strip_folder=True):
         cmd = f'alg.mapexport.getPathsExportDocumentMaps("{preset}", "{folder}", "{format}", [])'  # noqa
 
     result = substance_painter.js.evaluate(cmd)
-
     if strip_folder:
         for _stack, maps in result.items():
             for map_template, map_filepath in maps.items():
@@ -224,7 +223,8 @@ def _templates_to_regex(templates,
                         texture_set,
                         colorspaces,
                         project,
-                        mesh):
+                        mesh,
+                        tile_names):
     """Return regex based on a Substance Painter export filename template.
 
     This converts Substance Painter export filename templates like
@@ -263,6 +263,11 @@ def _templates_to_regex(templates,
         # No colorspace support enabled
         colorspace_match = ""
 
+    if tile_names and any(tile_names):
+        tile_name_match = "|".join(tile_names)
+    else:
+        tile_name_match = ""
+
     # Key to regex valid search values
     key_matches = {
         "$project": re.escape(_filename_no_ext(project)),
@@ -274,16 +279,7 @@ def _templates_to_regex(templates,
 
     version_info = substance_painter.application.version_info()
     if version_info >= (11, 0, 1):
-        # \s* pattern would match whitespace characters from the start
-        # [^\W_] requires at least one word character that's no underscore
-        # [\w -]* captures any word character, space or hyphen
-        # (?<! ) ensure the word does not end with space
-        # The pattern handles the cases such as "Table Top", "Table_Top",
-        # "Table-Top", "TableTOp", "Table Top". But it cannot handle
-        # some extreme scenarios such as "TableTop " or " TableTop"
-
-        key_matches["$uvTileName"] = r"(\s*[^\W_](?:[\w -]*(?<! )))"
-
+        key_matches["$uvTileName"] = tile_name_match
     # Turn the templates into regexes
     regexes = {}
     for template in templates:
@@ -350,7 +346,6 @@ def strip_template(template, strip="._ "):
     version_info = substance_painter.application.version_info()
     if version_info >= (11, 0, 1):
         keys.append("$uvTileName")
-
     stripped_template = template
     for key in keys:
         stripped_template = stripped_template.replace(key, "")
@@ -452,6 +447,11 @@ def get_parsed_export_maps(config, strip_texture_set=False):
     for key, filepaths in outputs.items():
         texture_set, stack = key
 
+        texture_name = (
+            substance_painter.textureset.TextureSet.from_name(texture_set)
+        )
+        tile_names = set(tile.name for tile in texture_name.all_uv_tiles())
+
         if stack:
             stack_path = f"{texture_set}/{stack}"
         else:
@@ -467,8 +467,8 @@ def get_parsed_export_maps(config, strip_texture_set=False):
                                              texture_set=texture_set,
                                              colorspaces=project_colorspaces,
                                              mesh=project_mesh_path,
-                                             project=project_path)
-
+                                             project=project_path,
+                                             tile_names=tile_names)
         # Let's precompile the regexes
         for template, regex in template_regex.items():
             template_regex[template] = re.compile(regex)
@@ -517,7 +517,12 @@ def get_stack_results(stack_results, template_regex,
             parsed = match.groupdict(default={})
             parsed["output"] = filename  # Add filename for convenience
             parsed["filepath"] = filepath  # Add filepath for convenience
-            stack_results[template].append(parsed)
+            uv_tilename = parsed.get("uvTileName", "")
+            if uv_tilename:
+                updated_key = (template, uv_tilename)
+            else:
+                updated_key = (template, "")
+            stack_results[updated_key].append(parsed)
             break
     else:
         if not strip_texture_set:

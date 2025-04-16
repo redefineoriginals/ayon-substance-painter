@@ -47,44 +47,33 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         # a product per generated texture or texture UDIM sequence
         for (texture_set_name, stack_name), template_maps in maps.items():
             self.log.info(f"Processing {texture_set_name}/{stack_name}")
-            for template, outputs in template_maps.items():
-                self.log.info(f"Processing {template}")
-                # check $uvTileName included as a key value in outputs dict
-                outputs_with_tilenames = [
-                    output for output in outputs
-                    if output.get("uvTileName", "")
-                ]
-                if outputs_with_tilenames:
-                    for output in outputs_with_tilenames:
-                        self.create_image_instance_by_tilename(
-                            instance, template, output,
-                            task_entity=task_entity,
-                            texture_set_name=texture_set_name,
-                            stack_name=stack_name,
-                            strip_texture_set=strip_texture_set
-                        )
-                else:
-                    self.create_image_instance(
-                        instance, template, outputs,
-                        task_entity=task_entity,
-                        texture_set_name=texture_set_name,
-                        stack_name=stack_name,
-                        strip_texture_set=strip_texture_set
-                    )
+            for (template, tilename), outputs in template_maps.items():
+                self.log.info(f"Processing {template} with UV tile name {tilename}")
+                self.create_image_instance(instance, template, outputs,
+                                           task_entity=task_entity,
+                                           texture_set_name=texture_set_name,
+                                           stack_name=stack_name,
+                                           uv_tile_name=tilename,
+                                           strip_texture_set=strip_texture_set)
 
     def create_image_instance(self, instance, template, outputs,
                               task_entity, texture_set_name, stack_name,
+                              uv_tile_name="",
                               strip_texture_set=False):
         """Create a new instance per image or UDIM sequence.
 
         The new instances will be of product type `image`.
 
         """
+
+        context = instance.context
         first_filepath = outputs[0]["filepath"]
         fnames = [os.path.basename(output["filepath"]) for output in outputs]
         ext = os.path.splitext(first_filepath)[1]
         assert ext.lstrip("."), f"No extension: {ext}"
 
+
+        # all_texture_sets = substance_painter.textureset.all_texture_sets()
         # Define the suffix we want to give this particular texture
         # set and set up a remapped product naming for it.
         suffix = ""
@@ -98,94 +87,18 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
                 # More than one stack, include stack name
                 suffix += f".{stack_name}"
 
-        # Always include the map identifier
-        map_identifier = strip_template(template)
-        suffix += f".{map_identifier}"
-
-        # Prepare representation
-        representation = {
-            "name": ext.lstrip("."),
-            "ext": ext.lstrip("."),
-            "files": fnames if len(fnames) > 1 else fnames[0],
-        }
-
-        # Mark as UDIM explicitly if it has UDIM tiles.
-        if bool(outputs[0].get("udim")):
-            # The representation for a UDIM sequence should have a `udim` key
-            # that is a list of all udim tiles (str) like: ["1001", "1002"]
-            # strings. See CollectTextures plug-in and Integrators.
-            representation["udim"] = [output["udim"] for output in outputs]
-
-        self.prepare_image_instance(
-            instance, task_entity, representation,
-            suffix, first_filepath, outputs[0],
-            texture_set_name, stack_name
-        )
-
-    def create_image_instance_by_tilename(self, instance, template, output,
-                                          task_entity, texture_set_name,
-                                          stack_name, strip_texture_set=False):
-        """Create a new instance per image by $uvTileNAme.
-
-        The new instances will be of product type `image`.
-
-        """
-        first_filepath = output["filepath"]
-        fnames = os.path.basename(output["filepath"])
-        ext = os.path.splitext(first_filepath)[1]
-        assert ext.lstrip("."), f"No extension: {ext}"
-
-        # Define the suffix we want to give this particular texture
-        # set and set up a remapped product naming for it.
-        uv_tile_name = output["uvTileName"]
-        suffix = f".{uv_tile_name}"
-        if not strip_texture_set:
-            texture_set = substance_painter.textureset.TextureSet.from_name(
-                texture_set_name
-            )
-            # More than one texture set, include texture set name
-            suffix += f".{texture_set_name}"
-            if texture_set.is_layered_material() and stack_name:
-                # More than one stack, include stack name
-                suffix += f".{stack_name}"
+        if uv_tile_name:
+            suffix += f".{uv_tile_name}"
 
         # Always include the map identifier
         map_identifier = strip_template(template)
         suffix += f".{map_identifier}"
-
-        # Prepare representation
-        representation = {
-            "name": ext.lstrip("."),
-            "ext": ext.lstrip("."),
-            "files": fnames,
-        }
-
-        # Mark as UDIM explicitly if it has UDIM tiles.
-        if bool(output.get("udim")):
-            representation["udim"] = [output["udim"]]
-
-        self.prepare_image_instance(
-            instance, task_entity, representation,
-            suffix, first_filepath, output,
-            texture_set_name, stack_name
-        )
-
-    def prepare_image_instance(
-            self, instance, task_entity, representation,
-            suffix, first_filepath, output,
-            texture_set_name, stack_name
-        ):
-        """Prepare the relevant instance data for image
-        instance(s) to be published.
-
-        """
-
-        context = instance.context
 
         task_name = task_type = None
         if task_entity:
             task_name = task_entity["name"]
             task_type = task_entity["taskType"]
+
         # TODO: The product type actually isn't 'texture' currently but
         #   for now this is only done so the product name starts with
         #   'texture'
@@ -207,6 +120,20 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             variant=instance.data["variant"],
             project_settings=context.data["project_settings"]
         )
+
+        # Prepare representation
+        representation = {
+            "name": ext.lstrip("."),
+            "ext": ext.lstrip("."),
+            "files": fnames if len(fnames) > 1 else fnames[0],
+        }
+
+        # Mark as UDIM explicitly if it has UDIM tiles.
+        if bool(outputs[0].get("udim")):
+            # The representation for a UDIM sequence should have a `udim` key
+            # that is a list of all udim tiles (str) like: ["1001", "1002"]
+            # strings. See CollectTextures plug-in and Integrators.
+            representation["udim"] = [output["udim"] for output in outputs]
 
         # Set up the representation for thumbnail generation
         # TODO: Simplify this once thumbnail extraction is refactored
@@ -238,7 +165,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
 
         # Store color space with the instance
         # Note: The extractor will assign it to the representation
-        colorspace = output.get("colorSpace")
+        colorspace = outputs[0].get("colorSpace")
         if colorspace:
             self.log.debug(f"{image_product_name} colorspace: {colorspace}")
             image_instance.data["colorspace"] = colorspace

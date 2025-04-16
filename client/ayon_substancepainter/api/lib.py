@@ -248,7 +248,7 @@ def _templates_to_regex(templates,
         colorspaces (list): The colorspaces defined in the current project.
         project (str): Filepath of current substance project.
         mesh (str): Path to mesh file used in current project.
-        mesh (str): The uvTileName set in the template in current project.
+        tile_names (str): The uvTileName set in the template in current project.
 
     Returns:
         dict: Template: Template regex pattern

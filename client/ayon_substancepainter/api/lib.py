@@ -277,8 +277,9 @@ def _templates_to_regex(templates,
     }
 
     version_info = substance_painter.application.version_info()
-    if version_info >= (11, 0, 1):
+    if version_info >= (11, 0, 0):
         key_matches["$uvTileName"] = tile_name_match
+
     # Turn the templates into regexes
     regexes = {}
     for template in templates:
@@ -343,8 +344,9 @@ def strip_template(template, strip="._ "):
     # Remove all keys
     keys = ["$project", "$mesh", "$textureSet", "$udim", "$colorSpace"]
     version_info = substance_painter.application.version_info()
-    if version_info >= (11, 0, 1):
+    if version_info >= (11, 0, 0):
         keys.append("$uvTileName")
+
     stripped_template = template
     for key in keys:
         stripped_template = stripped_template.replace(key, "")

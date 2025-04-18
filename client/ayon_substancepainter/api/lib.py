@@ -381,7 +381,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
     This tries to parse the texture outputs using a Python API export config.
 
-    Parses template keys: $project, $mesh, $textureSet, $colorSpace,
+    Parses template keys: $project, $mesh, , $colorSpace,
                           $udim, $uvTileName
 
     Example:
@@ -460,7 +460,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
             stack_path = texture_set_name
         if strip_texture_set:
             stack_templates = list(
-                template.replace("_$textureSet", "")
+                re.sub(r"[_.-]?\$textureSet[_.-]?", "", template)
                 for template in templates[stack_path].keys()
             )
         else:
@@ -487,7 +487,6 @@ def get_parsed_export_maps(config, strip_texture_set=False):
             filename = filepath[len(export_path):]
             stack_results = get_stack_results(stack_results, template_regex,
                                               filename, filepath,
-                                              texture_set_name,
                                               strip_texture_set=strip_texture_set)
 
         result[key] = dict(stack_results)
@@ -499,19 +498,9 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
 def get_stack_results(stack_results, template_regex,
                       filename, filepath,
-                      texture_set,
                       strip_texture_set=False):
     """Function to get filename and filepath for parsed outputs
     """
-    # Strip texture_set and stack_path if required
-    if strip_texture_set:
-        filename = filename.replace(f"_{texture_set}", "")
-        filepath = filepath.replace(f"_{texture_set}", "")
-        template_regex = {
-            template.replace("_$textureSet", ""): regex
-            for template, regex in template_regex.items()
-        }
-
     # Attempt to match the filename against each template
     for template, regex in template_regex.items():
         match = regex.match(filename)
@@ -758,8 +747,9 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
     for channel_map in maps:
         if strip_texture_set:
             old_channel_map = channel_map["fileName"]
-            channel_map["fileName"] = old_channel_map.replace(
-                "_$textureSet", ""
+            channel_map["fileName"] = re.sub(
+                r"[_.-]?\$textureSet[_.-]?", "",
+                old_channel_map
             )
             # export_preset_name = custom_export_preset
             all_output_maps.append(channel_map)

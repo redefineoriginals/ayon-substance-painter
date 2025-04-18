@@ -755,7 +755,7 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
             all_output_maps.append(channel_map)
         else:
             all_output_maps = maps
-
+    print("all_output_maps", all_output_maps)
     for channel_map in all_output_maps:
         if channel_type_names:
             for channel_name in channel_type_names:

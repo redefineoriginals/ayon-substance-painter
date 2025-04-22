@@ -178,7 +178,7 @@ def get_export_templates(config, format="png", strip_folder=True):
         "DefaultMaterial": {
             "$textureSet_BaseColor(_$colorSpace)(.$udim)": "DefaultMaterial_BaseColor_ACES - ACEScg.1002.png",
             "$textureSet_Emissive(_$colorSpace)(.$udim)": "DefaultMaterial_Emissive_ACES - ACEScg.1002.png",
-            "$textureSet_Height(_$colorSpace)(.$udim)": "DefaultMaterial_Height_Utility - Raw.1002.png",    
+            "$textureSet_Height(_$colorSpace)(.$udim)": "DefaultMaterial_Height_Utility - Raw.1002.png",
             "$textureSet_Metallic(_$colorSpace)(.$udim)": "DefaultMaterial_Metallic_Utility - Raw.1002.png",
             "$textureSet_Normal(_$colorSpace)(.$udim)": "DefaultMaterial_Normal_Utility - Raw.1002.png",    
             "$textureSet_Roughness(_$colorSpace)(.$udim)": "DefaultMaterial_Roughness_Utility - Raw.1002.png"
@@ -208,7 +208,6 @@ def get_export_templates(config, format="png", strip_folder=True):
         cmd = f'alg.mapexport.getPathsExportDocumentMaps("{preset}", "{folder}", "{format}", [])'  # noqa
 
     result = substance_painter.js.evaluate(cmd)
-
     if strip_folder:
         for _stack, maps in result.items():
             for map_template, map_filepath in maps.items():
@@ -224,7 +223,8 @@ def _templates_to_regex(templates,
                         texture_set,
                         colorspaces,
                         project,
-                        mesh):
+                        mesh,
+                        tile_names):
     """Return regex based on a Substance Painter export filename template.
 
     This converts Substance Painter export filename templates like
@@ -248,6 +248,8 @@ def _templates_to_regex(templates,
         colorspaces (list): The colorspaces defined in the current project.
         project (str): Filepath of current substance project.
         mesh (str): Path to mesh file used in current project.
+        tile_names (str): The uvTileName set in the template in
+                          the current project.
 
     Returns:
         dict: Template: Template regex pattern
@@ -263,6 +265,8 @@ def _templates_to_regex(templates,
         # No colorspace support enabled
         colorspace_match = ""
 
+    tile_name_match = "|".join(tile_names) if tile_names else ""
+
     # Key to regex valid search values
     key_matches = {
         "$project": re.escape(_filename_no_ext(project)),
@@ -271,6 +275,10 @@ def _templates_to_regex(templates,
         "$colorSpace": colorspace_match,
         "$udim": "([0-9]{4})"
     }
+
+    version_info = substance_painter.application.version_info()
+    if version_info >= (11, 0, 0):
+        key_matches["$uvTileName"] = tile_name_match
 
     # Turn the templates into regexes
     regexes = {}
@@ -335,6 +343,10 @@ def strip_template(template, strip="._ "):
     # Return only characters that were part of the template that were static.
     # Remove all keys
     keys = ["$project", "$mesh", "$textureSet", "$udim", "$colorSpace"]
+    version_info = substance_painter.application.version_info()
+    if version_info >= (11, 0, 0):
+        keys.append("$uvTileName")
+
     stripped_template = template
     for key in keys:
         stripped_template = stripped_template.replace(key, "")
@@ -369,7 +381,8 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
     This tries to parse the texture outputs using a Python API export config.
 
-    Parses template keys: $project, $mesh, $textureSet, $colorSpace, $udim
+    Parses template keys: $project, $mesh, , $colorSpace,
+                          $udim, $uvTileName
 
     Example:
     {("DefaultMaterial", ""): {
@@ -433,25 +446,31 @@ def get_parsed_export_maps(config, strip_texture_set=False):
     # Parse the outputs
     result = {}
     for key, filepaths in outputs.items():
-        texture_set, stack = key
+        texture_set_name, stack = key
+
+        texture_set = (
+            substance_painter.textureset.TextureSet.from_name(
+                texture_set_name)
+        )
+        tile_names = set(tile.name for tile in texture_set.all_uv_tiles())
 
         if stack:
-            stack_path = f"{texture_set}/{stack}"
+            stack_path = f"{texture_set_name}/{stack}"
         else:
-            stack_path = texture_set
+            stack_path = texture_set_name
         if strip_texture_set:
             stack_templates = list(
-                template.replace("_$textureSet", "")
+                re.sub(r"[_.-]?\$textureSet[_.-]?", "", template)
                 for template in templates[stack_path].keys()
             )
         else:
             stack_templates = list(templates[stack_path].keys())
         template_regex = _templates_to_regex(stack_templates,
-                                             texture_set=texture_set,
+                                             texture_set=texture_set_name,
                                              colorspaces=project_colorspaces,
                                              mesh=project_mesh_path,
-                                             project=project_path)
-
+                                             project=project_path,
+                                             tile_names=tile_names)
         # Let's precompile the regexes
         for template, regex in template_regex.items():
             template_regex[template] = re.compile(regex)
@@ -468,7 +487,6 @@ def get_parsed_export_maps(config, strip_texture_set=False):
             filename = filepath[len(export_path):]
             stack_results = get_stack_results(stack_results, template_regex,
                                               filename, filepath,
-                                              texture_set,
                                               strip_texture_set=strip_texture_set)
 
         result[key] = dict(stack_results)
@@ -480,19 +498,9 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
 def get_stack_results(stack_results, template_regex,
                       filename, filepath,
-                      texture_set,
                       strip_texture_set=False):
     """Function to get filename and filepath for parsed outputs
     """
-    # Strip texture_set and stack_path if required
-    if strip_texture_set:
-        filename = filename.replace(f"_{texture_set}", "")
-        filepath = filepath.replace(f"_{texture_set}", "")
-        template_regex = {
-            template.replace("_$textureSet", ""): regex
-            for template, regex in template_regex.items()
-        }
-
     # Attempt to match the filename against each template
     for template, regex in template_regex.items():
         match = regex.match(filename)
@@ -500,7 +508,12 @@ def get_stack_results(stack_results, template_regex,
             parsed = match.groupdict(default={})
             parsed["output"] = filename  # Add filename for convenience
             parsed["filepath"] = filepath  # Add filepath for convenience
-            stack_results[template].append(parsed)
+            uv_tilename = parsed.get("uvTileName", "")
+            if uv_tilename:
+                updated_key = (template, uv_tilename)
+            else:
+                updated_key = (template, "")
+            stack_results[updated_key].append(parsed)
             break
     else:
         if not strip_texture_set:
@@ -734,14 +747,15 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
     for channel_map in maps:
         if strip_texture_set:
             old_channel_map = channel_map["fileName"]
-            channel_map["fileName"] = old_channel_map.replace(
-                "_$textureSet", ""
+            channel_map["fileName"] = re.sub(
+                r"[_.-]?\$textureSet[_.-]?", "",
+                old_channel_map
             )
             # export_preset_name = custom_export_preset
             all_output_maps.append(channel_map)
         else:
             all_output_maps = maps
-
+    print("all_output_maps", all_output_maps)
     for channel_map in all_output_maps:
         if channel_type_names:
             for channel_name in channel_type_names:

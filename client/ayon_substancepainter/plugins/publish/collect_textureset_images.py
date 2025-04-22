@@ -47,16 +47,20 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         # a product per generated texture or texture UDIM sequence
         for (texture_set_name, stack_name), template_maps in maps.items():
             self.log.info(f"Processing {texture_set_name}/{stack_name}")
-            for template, outputs in template_maps.items():
-                self.log.info(f"Processing {template}")
+            for (template, tilename), outputs in template_maps.items():
+                self.log.info(
+                    f"Processing {template} with tile name {tilename}"
+                )
                 self.create_image_instance(instance, template, outputs,
                                            task_entity=task_entity,
                                            texture_set_name=texture_set_name,
                                            stack_name=stack_name,
+                                           uv_tile_name=tilename,
                                            strip_texture_set=strip_texture_set)
 
     def create_image_instance(self, instance, template, outputs,
                               task_entity, texture_set_name, stack_name,
+                              uv_tile_name="",
                               strip_texture_set=False):
         """Create a new instance per image or UDIM sequence.
 
@@ -84,6 +88,9 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             if texture_set.is_layered_material() and stack_name:
                 # More than one stack, include stack name
                 suffix += f".{stack_name}"
+
+        if uv_tile_name:
+            suffix += f".{uv_tile_name}"
 
         # Always include the map identifier
         map_identifier = strip_template(template)

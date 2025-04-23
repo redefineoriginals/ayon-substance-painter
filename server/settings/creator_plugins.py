@@ -1,4 +1,4 @@
-from ayonserver.settings import BaseSettingsModel, SettingsField
+from ayon_server.settings import BaseSettingsModel, SettingsField
 
 
 class ChannelMappingItemModel(BaseSettingsModel):
@@ -9,17 +9,17 @@ class ChannelMappingItemModel(BaseSettingsModel):
 
 class CreateTextureModel(BaseSettingsModel):
     channelmapping: list[ChannelMappingItemModel] = SettingsField(
-        defaultfactory=list, title="Channel Mapping")
+        default_factory=list, title="Channel Mapping")
 
 
 class CreatorsModel(BaseSettingsModel):
     CreateTextures: CreateTextureModel = SettingsField(
-        defaultfactory=CreateTextureModel,
+        default_factory=CreateTextureModel,
         title="Create Textures"
     )
 
 
-DEFAULTCREATORSETTINGS = {
+DEFAULT_CREATOR_SETTINGS = {
     "CreateTextures": {
         "channelmapping": [
             {"name": "Anisotropy Angle", "value": "Anisotropyangle"},

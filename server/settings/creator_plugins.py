@@ -2,7 +2,7 @@ from ayonserver.settings import BaseSettingsModel, SettingsField
 
 
 class ChannelMappingItemModel(BaseSettingsModel):
-    layout = "compact"
+    _layout = "compact"
     name: str = SettingsField(title="Channel Type")
     value: str = SettingsField(title="Channel Map")
 

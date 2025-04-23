@@ -9,12 +9,12 @@ class ChannelMappingItemModel(BaseSettingsModel):
 
 class CreateTextureModel(BaseSettingsModel):
     channelmapping: list[ChannelMappingItemModel] = SettingsField(
-        defaultfactory=list, title="Channel Mapping")
+        default_factory=list, title="Channel Mapping")
 
 
 class CreatorsModel(BaseSettingsModel):
     CreateTextures: CreateTextureModel = SettingsField(
-        defaultfactory=CreateTextureModel,
+        default_factory=CreateTextureModel,
         title="Create Textures"
     )
 

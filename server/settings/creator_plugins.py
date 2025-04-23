@@ -1,4 +1,4 @@
-from ayonserver.settings import BaseSettingsModel, SettingsField
+from ayon_server.settings import BaseSettingsModel, SettingsField
 
 
 class ChannelMappingItemModel(BaseSettingsModel):

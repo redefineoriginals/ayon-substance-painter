@@ -1,6 +1,6 @@
 name = "substancepainter"
 title = "Substance Painter"
-version = "0.2.7+dev"
+version = "0.2.8"
 app_host_name = "substancepainter"
 client_dir = "ayon_substancepainter"
 

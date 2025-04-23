@@ -19,7 +19,7 @@ class CreatorsModel(BaseSettingsModel):
     )
 
 
-DEFAULTCREATORSETTINGS = {
+DEFAULT_CREATOR_SETTINGS = {
     "CreateTextures": {
         "channelmapping": [
             {"name": "Anisotropy Angle", "value": "Anisotropyangle"},

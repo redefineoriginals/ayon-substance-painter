@@ -425,10 +425,22 @@ def get_parsed_export_maps(config, strip_texture_set=False):
     outputs = substance_painter.export.list_project_textures(config)
     templates = get_export_templates(config, strip_folder=False)
 
-    # Get all color spaces set for the current project
+    print("DEBUG: get_project_channel_data() returned:", get_project_channel_data())
+
+    #((AR-130525)rdo-modification
+    # Fixed issue with get_project_channel_data() returning None.
+    # Now safely handles the 'data' key being None to avoid crashing during colorSpace parsing.)
+    
     project_colorspaces = set(
-        data["colorSpace"] for data in get_project_channel_data().values()
+        data["colorSpace"]
+        for data in get_project_channel_data().values()
+        if data and "colorSpace" in data
     )
+
+    # Get all color spaces set for the current project
+    #project_colorspaces = set(
+        #data["colorSpace"] for data in get_project_channel_data().values()
+    #)
 
     # Get current project mesh path and project path to explicitly match
     # the $mesh and $project tokens

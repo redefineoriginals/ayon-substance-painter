@@ -261,7 +261,6 @@ class CreateTextures(Creator):
         if not substance_painter.project.is_open():
             return [
                 UILabelDef(
-                    "no_open_project",
                     label="Please open a Substance Painter project first.",
                 )
             ]

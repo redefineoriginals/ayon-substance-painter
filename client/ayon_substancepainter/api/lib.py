@@ -444,6 +444,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
     # Parse the outputs
     result = {}
+    version_info = substance_painter.application.version_info()
     for key, filepaths in outputs.items():
         texture_set_name, stack = key
 
@@ -453,7 +454,6 @@ def get_parsed_export_maps(config, strip_texture_set=False):
         )
 
         tile_names = set()
-        version_info = substance_painter.application.version_info()
         if version_info >= (11, 0, 0):
             tile_names = set(tile.name for tile in texture_set.all_uv_tiles())
 

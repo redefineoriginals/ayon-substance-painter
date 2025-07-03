@@ -277,6 +277,7 @@ def _templates_to_regex(templates,
     }
 
     if tile_name_match:
+        # Added in Substance Painter 11.0.0
         key_matches["$uvTileName"] = tile_name_match
 
     # Turn the templates into regexes

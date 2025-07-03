@@ -276,8 +276,7 @@ def _templates_to_regex(templates,
         "$udim": "([0-9]{4})"
     }
 
-    version_info = substance_painter.application.version_info()
-    if version_info >= (11, 0, 0):
+    if tile_name_match:
         key_matches["$uvTileName"] = tile_name_match
 
     # Turn the templates into regexes
@@ -452,7 +451,11 @@ def get_parsed_export_maps(config, strip_texture_set=False):
             substance_painter.textureset.TextureSet.from_name(
                 texture_set_name)
         )
-        tile_names = set(tile.name for tile in texture_set.all_uv_tiles())
+
+        tile_names = set()
+        version_info = substance_painter.application.version_info()
+        if version_info >= (11, 0, 0):
+            tile_names = set(tile.name for tile in texture_set.all_uv_tiles())
 
         if stack:
             stack_path = f"{texture_set_name}/{stack}"

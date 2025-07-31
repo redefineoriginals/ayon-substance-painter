@@ -3,6 +3,7 @@ title = "Substance Painter"
 version = "0.2.9+dev"
 app_host_name = "substancepainter"
 client_dir = "ayon_substancepainter"
+project_can_override_addon_version = True
 
 ayon_server_version = ">=1.1.2"
 ayon_required_addons = {

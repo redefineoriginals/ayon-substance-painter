@@ -80,7 +80,7 @@ class CreateWorkfile(AutoCreator):
             # Update instance context if is not the same
             product_name = self.get_product_name(
                 project_name=project_name,
-                project_entity=project_entity
+                project_entity=project_entity,
                 folder_entity=folder_entity,
                 task_entity=task_entity,
                 variant=variant,

@@ -6,6 +6,8 @@ from ayon_core.lib import version_up
 from ayon_core.host import IWorkfileHost
 from ayon_core.pipeline import registered_host
 
+import substance_painter.project
+
 
 class IncrementWorkfileVersion(pyblish.api.ContextPlugin):
     """Increment current workfile version."""
@@ -20,6 +22,17 @@ class IncrementWorkfileVersion(pyblish.api.ContextPlugin):
         assert all(result["success"] for result in context.data["results"]), (
             "Publishing not successful so version is not increased.")
 
+        substance_painter.project.execute_when_not_busy(
+                lambda: self._save_workfile(context)
+            )
+
+    def _save_workfile(self, context):
+        """Save the current workfile.
+
+        Args:
+            context (pyblish.api.Context): The context to use for
+            saving the workfile.
+        """
         current_filepath: str = context.data["currentFile"]
         try:
             from ayon_core.pipeline.workfile import save_next_version

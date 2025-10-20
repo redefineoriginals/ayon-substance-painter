@@ -1,3 +1,4 @@
+import substance_painter.project
 import substance_painter.export
 from ayon_core.pipeline import KnownPublishError, publish
 from ayon_substancepainter.api.lib import set_layer_stack_opacity
@@ -24,29 +25,9 @@ class ExtractTextures(publish.Extractor,
 
     def process(self, instance):
 
-        config = instance.data["exportConfig"]
-        creator_attrs = instance.data["creator_attributes"]
-        export_channel = creator_attrs.get("exportChannel", [])
-        node_ids = instance.data.get("selected_node_id", [])
-
-        with set_layer_stack_opacity(node_ids, export_channel):
-            result = substance_painter.export.export_project_textures(config)
-
-            if result.status != substance_painter.export.ExportStatus.Success:
-                raise KnownPublishError(
-                    "Failed to export texture set: {}".format(result.message)
-                )
-
-            # Log what files we generated
-            for (texture_set_name, stack_name), maps in (
-                result.textures.items()
-            ):
-                # Log our texture outputs
-                self.log.info(
-                    f"Exported stack: {texture_set_name} {stack_name}"
-                )
-                for texture_map in maps:
-                    self.log.info(f"Exported texture: {texture_map}")
+        substance_painter.project.execute_when_not_busy(
+            lambda: self._export_texture_set(instance)
+        )
 
         # We'll insert the color space data for each image instance that we
         # added into this texture set. The collector couldn't do so because
@@ -69,3 +50,35 @@ class ExtractTextures(publish.Extractor,
         # output data. Instead the separated texture instances are generated
         # from it which themselves integrate into the database.
         instance.data["integrate"] = False
+
+    def _export_texture_set(self, instance):
+        """Export the texture set for the given instance.
+
+        Args:
+            instance (pyblish.api.Instance): The instance to export.
+
+        Raises:
+            KnownPublishError: If the export fails.
+        """
+        config = instance.data["exportConfig"]
+        creator_attrs = instance.data["creator_attributes"]
+        export_channel = creator_attrs.get("exportChannel", [])
+        node_ids = instance.data.get("selected_node_id", [])
+        with set_layer_stack_opacity(node_ids, export_channel):
+            result = substance_painter.export.export_project_textures(config)
+
+            if result.status != substance_painter.export.ExportStatus.Success:
+                raise KnownPublishError(
+                    "Failed to export texture set: {}".format(result.message)
+                )
+
+            # Log what files we generated
+            for (texture_set_name, stack_name), maps in (
+                result.textures.items()
+            ):
+                # Log our texture outputs
+                self.log.info(
+                    f"Exported stack: {texture_set_name} {stack_name}"
+                )
+                for texture_map in maps:
+                    self.log.info(f"Exported texture: {texture_map}")

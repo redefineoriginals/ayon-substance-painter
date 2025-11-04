@@ -155,7 +155,14 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         image_instance.data["families"] = [product_type, "textures"]
         if instance.data["creator_attributes"].get("review"):
             image_instance.data["families"].append("review")
-            representation["tags"].append("webreview")
+            image_instance.data["fps"] = instance.context.data.get("fps", 25.0)
+            if bool(outputs[0].get("udim")):
+                udim = sorted(int(output["udim"]) for output in outputs)
+                image_instance.data["frameStart"] = udim[0]
+                image_instance.data["frameEnd"] = udim[-1]
+            else:
+                image_instance.data["frameStart"] = 1
+                image_instance.data["frameEnd"] = 1
 
         image_instance.data["representations"] = [representation]
 

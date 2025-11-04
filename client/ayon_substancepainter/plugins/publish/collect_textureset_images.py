@@ -161,8 +161,9 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
                 image_instance.data["frameStart"] = udim[0]
                 image_instance.data["frameEnd"] = udim[-1]
             else:
-                image_instance.data["frameStart"] = 1
-                image_instance.data["frameEnd"] = 1
+                # Use start of UDIM range as fallback frame for single images
+                image_instance.data["frameStart"] = 1001
+                image_instance.data["frameEnd"] = 1001
 
         image_instance.data["representations"] = [representation]
 

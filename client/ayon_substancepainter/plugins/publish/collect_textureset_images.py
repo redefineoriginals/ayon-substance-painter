@@ -157,9 +157,9 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             image_instance.data["families"].append("review")
 
             entity: dict = instance.data.get(
-                "taskEntity", instance.data["folderEntity"]
+                "taskEntity", instance.data.get("folderEntity", {})
             )
-            fps : float = entity["attrib"]["fps"]
+            fps : float = entity["attrib"]["fps"] if entity else 25.0
             image_instance.data["fps"] = fps
             if bool(outputs[0].get("udim")):
                 udim = sorted(int(output["udim"]) for output in outputs)

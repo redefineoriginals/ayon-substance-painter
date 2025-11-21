@@ -32,12 +32,14 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             project_name,
             instance.data["folderPath"]
         )
+        instance.data["folderEntity"] = folder_entity
         task_name = instance.data.get("task")
         task_entity = None
         if folder_entity and task_name:
             task_entity = ayon_api.get_task_by_name(
                 project_name, folder_entity["id"], task_name
             )
+            instance.data["taskEntity"] = task_entity
 
         instance.data["exportConfig"] = config
         strip_texture_set = instance.data["creator_attributes"].get(
@@ -159,7 +161,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             entity: dict = instance.data.get(
                 "taskEntity", instance.data.get("folderEntity", {})
             )
-            fps : float = entity["attrib"]["fps"] if entity else 25.0
+            fps : float = entity["attrib"]["fps"]
             image_instance.data["fps"] = fps
             if bool(outputs[0].get("udim")):
                 udim = sorted(int(output["udim"]) for output in outputs)

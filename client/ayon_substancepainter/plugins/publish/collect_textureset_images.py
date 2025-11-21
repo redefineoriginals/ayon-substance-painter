@@ -159,7 +159,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             image_instance.data["families"].append("review")
 
             entity: dict = instance.data.get(
-                "taskEntity", instance.data.get("folderEntity", {})
+                "taskEntity", instance.data["folderEntity"]
             )
             fps : float = entity["attrib"]["fps"]
             image_instance.data["fps"] = fps

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """Creator plugin for creating workfiles."""
-import inspect
 from ayon_core.pipeline import CreatedInstance, AutoCreator
 
 from ayon_substancepainter.api.pipeline import (
@@ -111,23 +110,12 @@ class CreateWorkfile(AutoCreator):
 
     # Helper methods (this might get moved into Creator class)
     def create_instance_in_context(self, product_name, data):
-        instance_kwargs = {
-            "product_type": self.product_type,
-            "product_name": product_name,
-            "data": data,
-            "creator": self,
-        }
-
-        # this is here to retain compatibility with older ayon-core
-        # but should be removed in future
-        if hasattr(self, "product_base_type"):
-            signature = inspect.signature(CreatedInstance)
-            if "product_base_type" in signature.parameters:
-                instance_kwargs["product_base_type"] = (
-                    self.product_base_type
-                )
-
-        instance = CreatedInstance(**instance_kwargs)
+        instance = CreatedInstance(
+            product_type=self.product_type,
+            product_name=product_name,
+            data=data,
+            creator=self
+        )
         self.create_context.creator_adds_instance(instance)
         return instance
 

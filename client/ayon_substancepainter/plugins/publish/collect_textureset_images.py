@@ -53,17 +53,30 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
                 self.log.info(
                     f"Processing {template} with tile name {tilename}"
                 )
-                self.create_image_instance(instance, template, outputs,
-                                           task_entity=task_entity,
-                                           texture_set_name=texture_set_name,
-                                           stack_name=stack_name,
-                                           uv_tile_name=tilename,
-                                           strip_texture_set=strip_texture_set)
+                self.create_image_instance(
+                    instance,
+                    template,
+                    outputs,
+                    folder_entity=folder_entity,
+                    task_entity=task_entity,
+                    texture_set_name=texture_set_name,
+                    stack_name=stack_name,
+                    uv_tile_name=tilename,
+                    strip_texture_set=strip_texture_set
+                )
 
-    def create_image_instance(self, instance, template, outputs,
-                              task_entity, texture_set_name, stack_name,
-                              uv_tile_name="",
-                              strip_texture_set=False):
+    def create_image_instance(
+        self,
+        instance,
+        template,
+        outputs,
+        folder_entity,
+        task_entity,
+        texture_set_name,
+        stack_name,
+        uv_tile_name="",
+        strip_texture_set=False
+    ):
         """Create a new instance per image or UDIM sequence.
 
         The new instances will be of product type `image`.
@@ -106,25 +119,34 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         # TODO: The product type actually isn't 'texture' currently but
         #   for now this is only done so the product name starts with
         #   'texture'
+        product_base_type = "texture"
+        if getattr(get_product_name, "use_entities", False):
+            get_product_name_kwargs = {
+                "task_name": task_name,
+                "task_type": task_type,
+            }
+        else:
+            get_product_name_kwargs = {
+                "folder_entity": folder_entity,
+                "task_entity": task_entity,
+                "product_base_type": product_base_type,
+            }
+
         image_product_name = get_product_name(
             project_name=context.data["projectName"],
-            task_name=task_name,
-            task_type=task_type,
             host_name=context.data["hostName"],
-            product_type="texture",
+            product_type=product_base_type,
             variant=instance.data["variant"] + suffix,
             project_settings=context.data["project_settings"],
-            product_base_type=instance.data["productBaseType"]
+            **get_product_name_kwargs,
         )
         image_product_group_name = get_product_name(
             project_name=context.data["projectName"],
-            task_name=task_name,
-            task_type=task_type,
             host_name=context.data["hostName"],
-            product_type="texture",
+            product_type=product_base_type,
             variant=instance.data["variant"],
             project_settings=context.data["project_settings"],
-            product_base_type=instance.data["productBaseType"]
+            **get_product_name_kwargs,
         )
 
         # Prepare representation

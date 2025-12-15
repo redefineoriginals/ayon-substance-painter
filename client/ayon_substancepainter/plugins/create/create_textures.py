@@ -25,6 +25,7 @@ class CreateTextures(Creator):
     identifier = "io.openpype.creators.substancepainter.textureset"
     label = "Textures"
     product_type = "textureSet"
+    product_base_type = "textureSet"
     icon = "picture-o"
 
     default_variant = "Main"
@@ -97,7 +98,10 @@ class CreateTextures(Creator):
     # Helper methods (this might get moved into Creator class)
     def create_instance_in_context(self, product_name, data):
         instance = CreatedInstance(
-            self.product_type, product_name, data, self
+            product_type=self.product_type,
+            product_name=product_name,
+            data=data,
+            creator=self
         )
         self.create_context.creator_adds_instance(instance)
         return instance

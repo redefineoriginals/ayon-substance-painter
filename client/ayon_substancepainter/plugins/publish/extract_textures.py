@@ -24,32 +24,47 @@ class ExtractTextures(publish.Extractor,
     order = publish.Extractor.order - 0.1
 
     def process(self, instance):
+        # Skip exporting if textures were already exported via the UI action.
+        flags = instance.data.get("ayon_flags") or instance.data.get("flags") or {}
+        if not flags.get("textures_exported"):
+            config = instance.data["exportConfig"]
+            creator_attrs = instance.data["creator_attributes"]
+            export_channel = creator_attrs.get("exportChannel", [])
+            node_ids = instance.data.get("selected_node_id", [])
 
-        substance_painter.project.execute_when_not_busy(
-            lambda: self._export_texture_set(instance)
-        )
+            with set_layer_stack_opacity(node_ids, export_channel):
+                result = substance_painter.export.export_project_textures(config)
+                if result.status != substance_painter.export.ExportStatus.Success:
+                    raise KnownPublishError(
+                        f"Failed to export texture set: {result.message}"
+                    )
+                # Log what files we generated
+                for (texture_set_name, stack_name), maps in result.textures.items():
+                    self.log.info(f"Exported stack: {texture_set_name} {stack_name}")
+                    for texture_map in maps:
+                        self.log.info(f"Exported texture: {texture_map}")
+        else:
+            self.log.info("Textures already exported via UI action; skipping export.")
 
-        # We'll insert the color space data for each image instance that we
-        # added into this texture set. The collector couldn't do so because
-        # some anatomy and other instance data needs to be collected prior
+        # Insert color space data for each image instance added into this texture set
         context = instance.context
         for image_instance in instance:
             representation = next(iter(image_instance.data["representations"]))
-
             colorspace = image_instance.data.get("colorspace")
             if not colorspace:
-                self.log.debug("No color space data present for instance: "
-                               f"{image_instance}")
+                self.log.debug(
+                    f"No color space data present for instance: {image_instance}"
+                )
                 continue
+            self.set_representation_colorspace(
+                representation,
+                context=context,
+                colorspace=colorspace,
+            )
 
-            self.set_representation_colorspace(representation,
-                                               context=context,
-                                               colorspace=colorspace)
-
-        # The TextureSet instance should not be integrated. It generates no
-        # output data. Instead the separated texture instances are generated
-        # from it which themselves integrate into the database.
+        # The TextureSet instance should not be integrated.
         instance.data["integrate"] = False
+
 
     def _export_texture_set(self, instance):
         """Export the texture set for the given instance.

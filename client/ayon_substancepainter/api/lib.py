@@ -9,8 +9,132 @@ import substance_painter.project
 import substance_painter.resource
 import substance_painter.js
 import substance_painter.export
+import substance_painter.textureset
 
 from qtpy import QtGui, QtWidgets, QtCore
+
+from ayon_core.pipeline import KnownPublishError
+
+
+def build_export_config_from_instance_data(instance):
+    """Build export configuration from stored instance data.
+
+    Accepts a raw instance dict (from project metadata) and returns a
+    configuration dictionary suitable for `substance_painter.export.export_project_textures`.
+    """
+    creator_attrs = instance.get("creator_attributes") or {}
+    preset_url = creator_attrs.get("exportPresetUrl")
+    config = {
+        "exportShaderParams": True,
+        "exportPath": "__REPLACE_ME__",
+        "defaultExportPreset": preset_url,
+        "exportParameters": [{
+            "parameters": {
+                "fileFormat": creator_attrs.get("exportFileFormat"),
+                "sizeLog2": creator_attrs.get("exportSize"),
+                "paddingAlgorithm": creator_attrs.get("exportPadding"),
+                "dilationDistance": creator_attrs.get("exportDilationDistance"),
+            }
+        }],
+    }
+
+    # Determine which texture sets to export; if none specified, export all in the document.
+    export_texture_sets = creator_attrs.get("exportTextureSets") or []
+    if not export_texture_sets:
+        export_texture_sets = [ts.name() for ts in substance_painter.textureset.all_texture_sets()]
+    config["exportList"] = [{"rootPath": name} for name in export_texture_sets]
+
+    # Remove any None values to let Painter use defaults.
+    params = config["exportParameters"][0]["parameters"]
+    for key in list(params.keys()):
+        if params[key] is None:
+            params.pop(key)
+
+    # Determine map outputs via existing helper.
+    channel_layer = creator_attrs.get("exportChannel") or []
+    is_single_output = creator_attrs.get("flattenTextureSets", False)
+    maps = get_filtered_export_preset(preset_url, channel_layer, is_single_output)
+    config.update(maps)
+    return config
+
+
+def _resolve_publish_texture_staging_dir(instance):
+    """Resolve the publish texture staging directory from instance data.
+
+    Looks for a staging or publish directory on the instance. Adjust the
+    lookup logic if your studio uses different keys.
+    """
+    staging_dir = (
+        instance.get("stagingDir")
+        or instance.get("publishDir")
+        or instance.get("collect_staging_dir")
+    )
+    if not staging_dir:
+        raise KnownPublishError(
+            "Cannot determine publish texture staging directory from instance."
+        )
+    return staging_dir
+
+
+def write_textures_to_publish_location(parent=None):
+    """
+    Export textures for a textureSet instance to its publish location.
+
+    Runs outside of the Pyblish publish loop to avoid holding database
+    connections open. Writes textures into the final publish staging
+    directory and sets a flag on the instance so the publish extractor
+    can skip exporting again.
+    """
+    # Ensure a project is open.
+    if not substance_painter.project.is_open():
+        raise KnownPublishError("No Substance Painter project is open.")
+
+    # Defer importing these functions to avoid circular import issues.
+    from .pipeline import get_instances_by_id, set_instance
+
+    # Retrieve stored instances and find textureSet instances.
+    instances_by_id = get_instances_by_id()
+    texture_instances = [
+        inst
+        for inst in instances_by_id.values()
+        if inst.get("productType") == "textureSet"
+        or inst.get("family") == "textureSet"
+        or "textureSet" in (inst.get("families") or [])
+    ]
+
+    if not texture_instances:
+        raise KnownPublishError("No 'textureSet' instances found. Create one first.")
+
+    # For the MVP, pick the first textureSet instance; later you can add a UI picker.
+    instance = texture_instances[0]
+
+    # Build export configuration from the instance data.
+    config = build_export_config_from_instance_data(instance)
+
+    # Determine export path and ensure the directory exists.
+    publish_dir = _resolve_publish_texture_staging_dir(instance)
+    os.makedirs(publish_dir, exist_ok=True)
+    config["exportPath"] = publish_dir
+
+    # Determine channels and layer IDs for export.
+    export_channel = instance.get("creator_attributes", {}).get("exportChannel", [])
+    node_ids = instance.get("selected_node_id", [])
+
+    # Perform the export with the correct layer visibility.
+    with set_layer_stack_opacity(node_ids, export_channel):
+        result = substance_painter.export.export_project_textures(config)
+
+    if result.status != substance_painter.export.ExportStatus.Success:
+        raise KnownPublishError(f"Texture export failed: {result.message}")
+
+    # Mark instance so publish extractor knows textures are already exported.
+    flags = instance.setdefault("ayon_flags", {})
+    flags["textures_exported"] = True
+
+    # Persist the updated instance data back into metadata.
+    set_instance(instance["instance_id"], instance, update=True)
+    return publish_dir
+
 
 
 def get_export_presets():

@@ -15,7 +15,7 @@ class CreateTextureModel(BaseSettingsModel):
 class AutoCreateModel(BaseSettingsModel):
     enabled: bool = SettingsField(title="Enabled")
     active_on_create: bool = SettingsField(True, title="Active by default")
-    default_variant: str = SettingsField("", title="Default Variants")
+    default_variant: str = SettingsField("", title="Default Variant")
 
 
 class CreatorsModel(BaseSettingsModel):

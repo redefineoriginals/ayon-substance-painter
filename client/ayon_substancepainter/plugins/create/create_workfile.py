@@ -21,6 +21,7 @@ class CreateWorkfile(AutoCreator):
 
     default_variant = "Main"
     settings_category = "substancepainter"
+    active_on_create = True
 
     def create(self):
 
@@ -67,7 +68,8 @@ class CreateWorkfile(AutoCreator):
             data = {
                 "folderPath": folder_path,
                 "task": task_name,
-                "variant": variant
+                "variant": variant,
+                "active": self.active_on_create,
             }
             current_instance = self.create_instance_in_context(product_name,
                                                                data)
@@ -105,6 +107,8 @@ class CreateWorkfile(AutoCreator):
             # Persist the data
             instance_id = instance.get("instance_id")
             instance_data = instance.data_to_store()
+            print("instance_data", instance_data)
+            instance_data["active"] = instance.get("active", True)
             instance_data_by_id[instance_id] = instance_data
         set_instances(instance_data_by_id, update=True)
 

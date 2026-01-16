@@ -107,7 +107,9 @@ class CreateWorkfile(AutoCreator):
             # Persist the data
             instance_id = instance.get("instance_id")
             instance_data = instance.data_to_store()
-            instance_data["active"] = instance.get("active", True)
+            instance_data["active"] = instance.get(
+                "active", self.active_on_create
+            )
             instance_data_by_id[instance_id] = instance_data
         set_instances(instance_data_by_id, update=True)
 

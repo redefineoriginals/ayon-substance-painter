@@ -203,6 +203,29 @@ class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
             lambda: host_tools.show_workfiles(parent=parent)
         )
 
+        # --- Pre-export textures action ---
+        # Add a menu entry to allow artists to pre-export textures before
+        # entering the publish loop. This calls the helper function in
+        # ayon_substancepainter.api.lib which writes textures directly to
+        # the publish location and sets a flag so the publish extractor
+        # will skip re-exporting. See USER-612 for details.
+        from . import lib as _ayon_sp_lib  # local import to avoid circular deps
+
+        def _pre_export_textures():
+            """Callback to pre-export textures for the first textureSet instance.
+
+            This runs outside of the pyblish publish loop. It will log
+            information to the console. Any exceptions will be printed.
+            """
+            try:
+                publish_dir = _ayon_sp_lib.write_textures_to_publish_location(parent=parent)
+                print(f"Pre-export completed. Textures written to: {publish_dir}")
+            except Exception as exc:
+                print(f"Error during pre-export: {exc}")
+
+        action = menu.addAction("Pre‑Export Textures")
+        action.triggered.connect(_pre_export_textures)
+
         substance_painter.ui.add_menu(menu)
 
         def on_menu_destroyed():

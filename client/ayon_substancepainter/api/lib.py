@@ -105,14 +105,67 @@ def write_textures_to_publish_location(parent=None):
     if not texture_instances:
         raise KnownPublishError("No 'textureSet' instances found. Create one first.")
 
-    # For the MVP, pick the first textureSet instance; later you can add a UI picker.
-    instance = texture_instances[0]
+    # If multiple texture set instances are present, prompt the user to select
+    # which one to export. Otherwise default to the sole instance.  We use
+    # Qt's input dialog to present a simple list.  If running without a
+    # Qt event loop (e.g. in headless tests), the first instance will be
+    # selected automatically.
+    instance = None
+    if len(texture_instances) == 1:
+        instance = texture_instances[0]
+    else:
+        try:
+            items = []
+            # Derive a display label for each instance; fall back to id
+            for inst in texture_instances:
+                label = inst.get("productName") or inst.get("label") or inst.get("name") or inst.get("instance_id")
+                items.append(label)
+            # Show a list selection dialog
+            item, ok = QtWidgets.QInputDialog.getItem(
+                parent or QtWidgets.QApplication.activeWindow(),
+                "Select Texture Set",
+                "Choose the texture set instance to export:",
+                items,
+                0,
+                False,
+            )
+            if ok:
+                index = items.index(item)
+                instance = texture_instances[index]
+            else:
+                raise KnownPublishError("Pre-export cancelled: no instance selected")
+        except Exception:
+            # Fall back to first instance if Qt is unavailable or selection fails
+            instance = texture_instances[0]
 
     # Build export configuration from the instance data.
     config = build_export_config_from_instance_data(instance)
 
-    # Determine export path and ensure the directory exists.
+    # Determine export path and ensure the directory exists. If the path
+    # already exists then compute the next available version directory by
+    # scanning sibling directories for numeric version names. This acts as a
+    # simple version reservation mechanism when there is no direct server
+    # reservation (see USER‑612).  If the resolved directory does not end
+    # with a version number (e.g. a hero version path), we will not try to
+    # version up and will export into that directory directly.
     publish_dir = _resolve_publish_texture_staging_dir(instance)
+    if os.path.exists(publish_dir):
+        base_dir = os.path.dirname(publish_dir)
+        current_name = os.path.basename(publish_dir)
+        # Only version up if the folder name is a purely numeric string
+        if current_name.isdigit():
+            # Gather all existing numeric version directories
+            versions = []
+            for name in os.listdir(base_dir):
+                if name.isdigit():
+                    try:
+                        versions.append(int(name))
+                    except ValueError:
+                        pass
+            next_version = (max(versions) + 1) if versions else 1
+            new_dir_name = f"{next_version:03d}"
+            publish_dir = os.path.join(base_dir, new_dir_name)
+    # Create the final export directory
     os.makedirs(publish_dir, exist_ok=True)
     config["exportPath"] = publish_dir
 
@@ -131,7 +184,12 @@ def write_textures_to_publish_location(parent=None):
     flags = instance.setdefault("ayon_flags", {})
     flags["textures_exported"] = True
 
-    # Persist the updated instance data back into metadata.
+    # Persist the updated instance data back into metadata. Also update
+    # instance staging/publish directory to our final export path so the
+    # validator and integrations can find the files. We try to update
+    # commonly used keys but ignore missing ones.
+    instance["stagingDir"] = publish_dir
+    instance["publishDir"] = publish_dir
     set_instance(instance["instance_id"], instance, update=True)
     return publish_dir
 

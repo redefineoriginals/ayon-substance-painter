@@ -162,7 +162,8 @@ class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
         return metadata.get(OPENPYPE_METADATA_CONTEXT_KEY) or {}
 
     def _install_menu(self):
-        from qtpy import QtWidgets
+        from qtpy import QtWidgets , QtCore
+        
         from ayon_core.tools.utils import host_tools
 
         parent = substance_painter.ui.get_main_window()
@@ -212,19 +213,62 @@ class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
         from . import lib as _ayon_sp_lib  # local import to avoid circular deps
 
         def _pre_export_textures():
-            """Callback to pre-export textures for the first textureSet instance.
+            """Callback to pre-export textures with selective options.
 
-            This runs outside of the pyblish publish loop. It will log
-            information to the console. Any exceptions will be printed.
+            This runs outside of the pyblish publish loop. Users can select:
+            - Which materials/texture sets to export
+            - Which UDIMs to export (or all)
+            - Whether to create new version or overwrite current
             """
-            try:
-                publish_dir = _ayon_sp_lib.write_textures_to_publish_location(parent=parent)
-                print(f"Pre-export completed. Textures written to: {publish_dir}")
-            except Exception as exc:
-                print(f"Error during pre-export: {exc}")
+            if parent is None:
+                log.error("Cannot export textures: Substance Painter main window not available")
+                return
 
-        action = menu.addAction("Pre‑Export Textures")
-        action.triggered.connect(_pre_export_textures)
+            # Show a blocking progress dialog during export
+            progress_dialog = QtWidgets.QProgressDialog(
+                "Exporting textures...",
+                None,
+                0,
+                0,
+                parent
+            )
+            progress_dialog.setWindowModality(QtCore.Qt.WindowModal)
+            progress_dialog.setWindowTitle("Export Textures")
+            progress_dialog.show()
+            QtWidgets.QApplication.instance().processEvents()
+
+            try:
+                log.info("Starting selective texture pre-export...")
+                
+                # Use the new selective export function
+                publish_dir = _ayon_sp_lib.write_textures_to_publish_location_selective(parent=parent)
+                progress_dialog.close()
+
+                log.info(f"Pre-export completed. Textures written to: {publish_dir}")
+
+                # Show success message to user
+                QtWidgets.QMessageBox.information(
+                    parent,
+                    "Textures Exported Successfully",
+                    f"Textures have been exported to:\n\n{publish_dir}\n\n"
+                    "You can now proceed to publish without re-exporting."
+                )
+
+            except Exception as exc:
+                progress_dialog.close()
+                log.error(f"Error during texture pre-export: {exc}", exc_info=True)
+
+                # Show detailed error message to user
+                error_msg = str(exc)
+                QtWidgets.QMessageBox.critical(
+                    parent,
+                    "Texture Export Failed",
+                    f"Failed to export textures:\n\n{error_msg}\n\n"
+                    "Check the console log for more details."
+                )
+
+        export_action = menu.addAction("Pre‑Export Textures")
+        export_action.triggered.connect(_pre_export_textures)
 
         substance_painter.ui.add_menu(menu)
 

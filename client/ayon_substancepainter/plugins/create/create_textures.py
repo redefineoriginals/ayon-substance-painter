@@ -257,6 +257,14 @@ class CreateTextures(Creator):
         ]
 
     def get_pre_create_attr_defs(self):
+
+        if not substance_painter.project.is_open():
+            return [
+                UILabelDef(
+                    label="Please open a Substance Painter project first.",
+                )
+            ]
+
         # Use same attributes as for instance attributes
         attr_defs = []
         if  substance_painter.application.version_info()[0] >= 10:

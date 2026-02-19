@@ -558,11 +558,11 @@ def map_includes_channel(map: dict, channel_name: str) -> bool:
 
     """
     # original behavior: check if the channel name is in the file name
-    file_name = map.get("fileName", "")
+    file_name = map.get("fileName") or ""
     if channel_name in file_name:
         return True
 
-    # substance store the channel names as lowercase
+    # Substance stores the channel names in lowercase
     channel_name = channel_name.lower()
 
     for channel in map.get("channels", []):

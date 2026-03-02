@@ -12,6 +12,182 @@ import substance_painter.export
 
 from qtpy import QtGui, QtWidgets, QtCore
 
+# ---------------------------------------------------------------------------
+#((RDO-240226)rdo-modification
+# Added texture resolution limit helpers and check_texture_resolution_before_write.
+# This is Gate 1 of 2 — warns/blocks the Artist at Write/Export time if the
+# project texture resolution exceeds the configured limit, preventing wasted
+# bake time on data that will be blocked at publish.
+#
+# Settings are read from Ayon project settings:
+#   substancepainter > load > SubstanceLoadProjectMesh
+#     - max_publish_texture_resolution  (int px, default 4096)
+#     - warn_on_write                   (bool, default True)
+#     - sanity_check_optional           (bool, default False — show override)
+#
+# Gate 2 (publish-time) is in:
+#   plugins/publish/validate_texture_resolution.py
+#
+# Note: substance_painter.textureset is intentionally imported inside
+# _get_project_export_size_px() rather than at module level to avoid
+# a startup import error (PLUGINS_MENU not yet available during SP init).)
+# ---------------------------------------------------------------------------
+
+def _get_texture_limit_settings():
+    """Return the texture resolution limit fields from project settings.
+
+    These live under load > SubstanceLoadProjectMesh alongside the project
+    templates, since resolution is configured at project creation time.
+
+    Returns:
+        dict: SubstanceLoadProjectMesh settings dict, or empty dict if
+            not found.
+    """
+    try:
+        #((RDO-240226)rdo-modification
+        # Imported locally to avoid a startup import error — ayon_core.pipeline
+        # triggers the PLUGINS_MENU error if imported at module level during
+        # Substance Painter's plugin initialisation phase.)
+        from ayon_core.pipeline import get_current_project_settings
+        project_settings = get_current_project_settings()
+        return (
+            project_settings
+            .get("substancepainter", {})
+            .get("load", {})
+            .get("SubstanceLoadProjectMesh", {})
+        )
+    except Exception:
+        return {}
+
+
+def get_max_texture_resolution():
+    """Return the configured max publish texture resolution in pixels.
+
+    Reads from Ayon project settings:
+        substancepainter > load > SubstanceLoadProjectMesh
+            > max_publish_texture_resolution
+
+    Returns:
+        int: Max resolution (longest axis) in pixels. Returns 4096 if the
+            setting cannot be read, as a safe studio default.
+    """
+    limits = _get_texture_limit_settings()
+    return limits.get("max_publish_texture_resolution", 4096)
+
+
+def _get_project_export_size_px():
+    """Return the current Substance Painter project's texture resolution in pixels.
+
+    Queries all texture sets in the open project and returns the largest
+    dimension found. Used to determine whether the Artist is working above
+    the configured limit before they spend time baking.
+
+    Note:
+        substance_painter.textureset is imported locally here to avoid a
+        startup import error caused by PLUGINS_MENU not being available
+        during Substance Painter's plugin initialisation phase.
+
+    Returns:
+        int: Largest texture dimension in pixels across all texture sets,
+            or 0 if the resolution cannot be determined or no project is open.
+    """
+    try:
+        import substance_painter.textureset
+        all_sets = substance_painter.textureset.all_texture_sets()
+        sizes = []
+        for ts in all_sets:
+            res = ts.get_resolution()
+            sizes.extend([res.width, res.height])
+        return max(sizes) if sizes else 0
+    except Exception:
+        return 0
+
+
+def check_texture_resolution_before_write(parent=None):
+    """Check texture resolution against the project limit before export.
+
+    This is Gate 1 of the two-gate resolution enforcement system. Runs when
+    the Artist triggers a Write/Export from the studio menu, before any baking
+    begins. Prevents Artists from wasting hours generating texture sets that
+    will be blocked at publish time.
+
+    Behaviour is controlled by Ayon project settings under:
+        substancepainter > load > SubstanceLoadProjectMesh
+
+        - max_publish_texture_resolution: pixel limit (default 4096)
+        - warn_on_write: whether to show a dialog (default True)
+        - sanity_check_optional: show override — if True, Artist can bypass
+          via "Continue Anyway" (default False)
+
+    Args:
+        parent: Optional Qt parent widget for the warning dialog.
+
+    Returns:
+        bool: True if the export should proceed, False if it should be
+            cancelled.
+    """
+    max_res = get_max_texture_resolution()
+    if max_res == 0:
+        return True
+
+    current_res = _get_project_export_size_px()
+    if current_res == 0 or current_res <= max_res:
+        return True
+
+    limits = _get_texture_limit_settings()
+    warn_on_write = limits.get("warn_on_write", True)
+    sanity_check_optional = limits.get("sanity_check_optional", False)
+
+    if not warn_on_write and sanity_check_optional:
+        # Warnings suppressed, show override active — proceed silently
+        return True
+
+    if not warn_on_write and not sanity_check_optional:
+        # Warnings suppressed, hard limit — block silently
+        return False
+
+    # Show warning dialog
+    title = "Texture Resolution Limit Exceeded"
+    body = (
+        f"The current texture resolution ({current_res}px) exceeds the "
+        f"project limit of {max_res}px.\n\n"
+        f"Exporting textures above {max_res}px may:\n"
+        f"  \u2022 Cause crashes during publish or downstream processing\n"
+        f"  \u2022 Generate data that cannot be published\n"
+        f"  \u2022 Waste significant bake time\n\n"
+    )
+
+    if sanity_check_optional:
+        body += (
+            "This show has a resolution override enabled.\n"
+            "You may continue, but the Publish validator will still warn you."
+        )
+        result = QtWidgets.QMessageBox.warning(
+            parent,
+            title,
+            body,
+            QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
+            QtWidgets.QMessageBox.Cancel,
+        )
+        return result == QtWidgets.QMessageBox.Ok
+    else:
+        body += (
+            "Export has been blocked.\n"
+            "Reduce the texture resolution or ask your supervisor to enable "
+            "a show override if higher resolution is required."
+        )
+        QtWidgets.QMessageBox.warning(
+            parent,
+            title,
+            body,
+            QtWidgets.QMessageBox.Ok,
+        )
+        return False
+
+# ---------------------------------------------------------------------------
+# End RDO-240226
+# ---------------------------------------------------------------------------
+
 
 def get_export_presets():
     """Return Export Preset resource URLs for all available Export Presets.

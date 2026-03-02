@@ -35,6 +35,21 @@ def document_resolution_enum():
     ]
 
 
+#((RDO-240226)rdo-modification
+# Added max_publish_resolution_enum to support the new texture resolution
+# limit setting. 8K included for shows with a legitimate override requirement
+# e.g. DMP-heavy environments.)
+def max_publish_resolution_enum():
+    return [
+        {"label": "256", "value": 256},
+        {"label": "512", "value": 512},
+        {"label": "1K", "value": 1024},
+        {"label": "2K", "value": 2048},
+        {"label": "4K (Default)", "value": 4096},
+        {"label": "8K", "value": 8192},
+    ]
+
+
 class ProjectTemplatesModel(BaseSettingsModel):
     _layout = "expanded"
     name: str = SettingsField("default", title="Template Name")
@@ -79,6 +94,42 @@ class ProjectTemplateSettingModel(BaseSettingsModel):
         title="Project Templates"
     )
 
+    #((RDO-240226)rdo-modification
+    # Added three fields to enforce a maximum texture resolution at Write and
+    # Publish time. This prevents Artists from baking oversized texture sets
+    # (e.g. 128x 8K maps) that cause crashes and waste hundreds of hours.
+    # Gate 1 (write-time) is in: api/lib.py - check_texture_resolution_before_write
+    # Gate 2 (publish-time) is in: plugins/publish/validate_texture_resolution.py)
+    max_publish_texture_resolution: int = SettingsField(
+        4096,
+        enum_resolver=max_publish_resolution_enum,
+        title="Max Publish Texture Resolution",
+        description=(
+            "Maximum texture resolution (longest axis) allowed at Write and "
+            "Publish time. Textures above this will be warned at Write time "
+            "and blocked at Publish time. Default 4K. "
+            "Increase per-show for DMP or hero asset edge-cases."
+        )
+    )
+    warn_on_write: bool = SettingsField(
+        True,
+        title="Warn Artist on Write/Export",
+        description=(
+            "Show a warning dialog when the Artist exports textures above "
+            "the limit, before bake time is wasted."
+        )
+    )
+    sanity_check_optional: bool = SettingsField(
+        False,
+        title="Make Publish Validator Optional (Show Override)",
+        description=(
+            "When True, the publish validator becomes a WARNING instead of "
+            "an ERROR. Use this for shows where DMPs or hero assets "
+            "legitimately require higher resolution textures. "
+            "The Write tool will also allow bypass when this is enabled."
+        )
+    )
+
 
 class LoadersModel(BaseSettingsModel):
     SubstanceLoadProjectMesh: ProjectTemplateSettingModel = SettingsField(
@@ -117,6 +168,11 @@ DEFAULT_LOADER_SETTINGS = {
                 "tangent_space_mode": "TangentSpace.PerFragment",
                 "preserve_strokes": True
             }
-        ]
+        ],
+        #((RDO-240226)rdo-modification
+        # Added default values for the three new resolution limit fields.)
+        "max_publish_texture_resolution": 4096,
+        "warn_on_write": True,
+        "sanity_check_optional": False
     }
 }

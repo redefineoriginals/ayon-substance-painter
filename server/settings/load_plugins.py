@@ -126,7 +126,7 @@ class ProjectTemplateSettingModel(BaseSettingsModel):
             "When True, the publish validator becomes a WARNING instead of "
             "an ERROR. Use this for shows where DMPs or hero assets "
             "legitimately require higher resolution textures. "
-            "Requires supervisor approval — off by default."
+            "Requires supervisor approval - off by default."
         )
     )
 
@@ -171,7 +171,7 @@ DEFAULT_LOADER_SETTINGS = {
         ],
         #((RDO-240226)rdo-modification
         # Added default values for the two new resolution limit fields.
-        # warn_on_write removed — Write always warns with bypass allowed.)
+        # warn_on_write removed - Write always warns with bypass allowed.)
         "max_publish_texture_resolution": 4096,
         "sanity_check_optional": False
     }

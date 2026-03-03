@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 #((RDO-240226)rdo-modification
 # Added check_texture_resolution_before_write and supporting helpers.
-# This is Gate 1 of 2 — warns the Artist at Write/Export time if the project
+# This is Gate 1 of 2 - warns the Artist at Write/Export time if the project
 # texture resolution exceeds the configured limit.
 #
 # Gate 1 behaviour (Write): Always shows a warning dialog. Always allows
@@ -30,14 +30,15 @@ log = logging.getLogger(__name__)
 # sanity_check_optional in Ayon project settings.
 # See: plugins/publish/validate_texture_resolution.py
 #
-# Note: get_max_texture_resolution and _get_texture_limit_settings are
-# intentionally NOT imported from validate_texture_resolution to avoid
-# a cyclic import. The settings read is duplicated here by design.
+# Note: The settings read (_get_texture_limit_settings) is intentionally
+# duplicated here rather than imported from validate_texture_resolution to
+# avoid a cyclic import. Both gates read from the same settings path.
 #
 # ayon_core.pipeline and substance_painter.textureset are imported locally
 # inside their respective functions to avoid a startup import error
 # (PLUGINS_MENU not yet available during Substance Painter's init phase).)
 # ---------------------------------------------------------------------------
+
 
 def _get_texture_limit_settings():
     """Return the texture resolution limit fields from project settings.
@@ -56,7 +57,7 @@ def _get_texture_limit_settings():
     """
     try:
         #((RDO-240226)rdo-modification
-        # Imported locally to avoid a startup import error — ayon_core.pipeline
+        # Imported locally to avoid a startup import error - ayon_core.pipeline
         # triggers the PLUGINS_MENU error if imported at module level during
         # Substance Painter's plugin initialisation phase.)
         from ayon_core.pipeline import get_current_project_settings
@@ -67,17 +68,14 @@ def _get_texture_limit_settings():
             .get("load", {})
             .get("SubstanceLoadProjectMesh", {})
         )
-    except KeyError as exc:
-        log.warning(
-            "Expected key missing in project settings: %s", exc, exc_info=True
-        )
     except TypeError as exc:
+        # project_settings or an intermediate value is None or wrong type
         log.warning(
             "Unexpected settings structure (None or wrong type): %s",
             exc, exc_info=True
         )
     except Exception as exc:
-        # Broad catch retained as a last resort — ayon_core may raise
+        # Broad catch retained as a last resort - ayon_core may raise
         # connection or environment errors we cannot predict at import time.
         log.warning(
             "Could not read texture limit settings: %s", exc, exc_info=True
@@ -110,7 +108,7 @@ def _get_project_export_size_px():
             sizes.extend([res.width, res.height])
         return max(sizes) if sizes else 0
     except AttributeError as exc:
-        # get_resolution() or .width/.height missing — SP API version mismatch
+        # get_resolution() or .width/.height missing - SP API version mismatch
         log.warning(
             "Unexpected SP textureset API response: %s", exc, exc_info=True
         )
@@ -129,6 +127,12 @@ def check_texture_resolution_before_write(parent=None):
     This is Gate 1 of the two-gate resolution enforcement system. Runs when
     the Artist triggers a Write/Export from the studio menu, before any baking
     begins.
+
+    Note:
+        This function is not called within this repo. It is intended as the
+        public API entry point for the studio's Write menu action - a future
+        integration that will live in a separate private repository and import
+        this function from lib.py to trigger Gate 1 before baking begins.
 
     Gate 1 always shows a warning dialog if the resolution exceeds the limit,
     but always allows the Artist to bypass and continue. The warning message
@@ -358,7 +362,7 @@ def get_export_templates(config, format="png", strip_folder=True):
             "$textureSet_Emissive(_$colorSpace)(.$udim)": "DefaultMaterial_Emissive_ACES - ACEScg.1002.png",
             "$textureSet_Height(_$colorSpace)(.$udim)": "DefaultMaterial_Height_Utility - Raw.1002.png",
             "$textureSet_Metallic(_$colorSpace)(.$udim)": "DefaultMaterial_Metallic_Utility - Raw.1002.png",
-            "$textureSet_Normal(_$colorSpace)(.$udim)": "DefaultMaterial_Normal_Utility - Raw.1002.png",    
+            "$textureSet_Normal(_$colorSpace)(.$udim)": "DefaultMaterial_Normal_Utility - Raw.1002.png",
             "$textureSet_Roughness(_$colorSpace)(.$udim)": "DefaultMaterial_Roughness_Utility - Raw.1002.png"
         }
     }

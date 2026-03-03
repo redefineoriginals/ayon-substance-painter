@@ -1,12 +1,45 @@
 import os
-import logging
-import subprocess
+import sys
 
 import pyblish.api
 
 from ayon_core.pipeline import PublishValidationError
+from ayon_core.lib.transcoding import get_oiio_info_for_input
 
-log = logging.getLogger(__name__)
+
+def _resolve_long_path(path):
+    """Resolve a Windows 8.3 short path to its full long path.
+
+    On Windows, temp directories may be represented with 8.3 short names
+    (e.g. USERF~1.NAM instead of username.full). Python's os.path.isfile
+    can fail to match these correctly in some environments. This function
+    resolves the short path to the full long path using the Windows API.
+
+    On non-Windows platforms the path is returned unchanged.
+
+    Args:
+        path (str): File path, potentially containing 8.3 short components.
+
+    Returns:
+        str: Resolved long path on Windows, original path on other platforms.
+    """
+    if sys.platform != "win32":
+        return path
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        get_long = ctypes.windll.kernel32.GetLongPathNameW
+        get_long(path, buf, 32768)
+        return buf.value or path
+    except Exception:
+        # Broad catch is intentional here. This function is best-effort -
+        # if the Windows API call fails for any reason (ctypes unavailable,
+        # kernel32 not found, unexpected return value), we silently fall back
+        # to the original path and let os.path.isfile try its luck. Raising
+        # or logging here would produce noise that confuses Artists and TDs,
+        # since the failure mode is benign: worst case, os.path.isfile
+        # returns False and the file is caught by the fail-safe.
+        return path
 
 
 class ValidateTextureResolution(pyblish.api.InstancePlugin):
@@ -28,9 +61,22 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
 
     Artists submitting via Tray Publisher are also covered by this validator
     since it is DCC-agnostic and reads from representations on disk.
+
+    Dimension reading:
+        Uses get_oiio_info_for_input from ayon_core.lib.transcoding, which
+        wraps the OIIO iinfo CLI tool distributed with Ayon via ayon-third-party.
+        This is the standard ayon-core approach for image inspection.
+
+    Fail-safe behaviour:
+        If the dimensions of a texture file cannot be determined (e.g. the
+        file cannot be opened by OIIO), the file is treated as a violation
+        and publish is blocked. This ensures oversized textures cannot slip
+        through due to unreadable files.
     """
 
-    order = pyblish.api.ValidatorOrder + 0.1
+    # Must run after ExtractorOrder so "Extract Texture Set" has already
+    # written files to staging before we check dimensions.
+    order = pyblish.api.ExtractorOrder + 0.1
     label = "Validate texture resolution"
     hosts = ["substancepainter"]
     families = ["textureSet"]
@@ -43,10 +89,8 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
     @classmethod
     def apply_settings(cls, project_settings):
         #((RDO-240226)rdo-modification
-        # Moved resolution limit settings read from lib.py into the validator
-        # class itself. get_max_texture_resolution and related helpers are no
-        # longer needed in lib.py since they are only used here.
-        # This also avoids the cyclic import risk noted in the PR review.)
+        # Resolution limit settings are read directly here rather than via
+        # lib.py to keep the logic local and avoid a cyclic import.)
         limits = (
             project_settings
             .get("substancepainter", {})
@@ -70,58 +114,95 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
             return
 
         violations = []
+        unreadable = []
 
-        for image_instance in instance:
-            representations = image_instance.data.get("representations", [])
+        # Representations are on the child instances, not the parent textureSet
+        for child in instance:
+            if not hasattr(child, "data"):
+                continue
+            representations = child.data.get("representations", [])
             if not representations:
                 continue
 
-            representation = representations[0]
-            staging_dir = representation.get("stagingDir", "")
-            filenames = representation.get("files", [])
-            if isinstance(filenames, str):
-                filenames = [filenames]
+            for representation in representations:
+                staging_dir = _resolve_long_path(
+                    representation.get("stagingDir", "")
+                )
+                filenames = representation.get("files", [])
+                if isinstance(filenames, str):
+                    filenames = [filenames]
 
-            for filename in filenames:
-                filepath = os.path.join(staging_dir, filename)
-                if not os.path.isfile(filepath):
-                    continue
+                for filename in filenames:
+                    filepath = os.path.join(staging_dir, filename)
 
-                width, height = self._get_dimensions(filepath)
-                if width is None:
-                    continue
+                    if not os.path.isfile(filepath):
+                        # File does not exist - treat as unreadable, fail safe
+                        self.log.warning(
+                            "Texture file not found, treating as violation "
+                            "to fail safe: %s", filepath
+                        )
+                        unreadable.append(filename)
+                        continue
 
-                longest = max(width, height)
-                if longest > max_res:
-                    violations.append({
-                        "name": filename,
-                        "width": width,
-                        "height": height,
-                        "longest": longest,
-                    })
+                    width, height = self._get_dimensions(filepath)
+                    if width is None:
+                        # Dimensions unreadable - treat as violation, fail safe
+                        self.log.warning(
+                            "Could not determine dimensions of %s, treating "
+                            "as violation to fail safe.", filepath
+                        )
+                        unreadable.append(filename)
+                        continue
 
-        if not violations:
+                    longest = max(width, height)
+                    if longest > max_res:
+                        violations.append({
+                            "name": filename,
+                            "width": width,
+                            "height": height,
+                            "longest": longest,
+                        })
+
+        if not violations and not unreadable:
             self.log.info(
                 "All textures are within the %spx resolution limit.", max_res
             )
             return
 
-        lines = [
-            f"{len(violations)} texture(s) exceed the project limit "
-            f"of {max_res}px:\n"
-        ]
-        for v in violations:
+        lines = []
+
+        if violations:
             lines.append(
-                f"  \u2022 {v['name']}  \u2192  "
-                f"{v['width']} x {v['height']}px"
+                "{} texture(s) exceed the project limit of {}px:\n".format(
+                    len(violations), max_res
+                )
             )
+            for v in violations:
+                lines.append(
+                    "  - {}  ->  {} x {}px".format(
+                        v["name"], v["width"], v["height"]
+                    )
+                )
+
+        if unreadable:
+            lines.append(
+                "\n{} texture(s) could not be read and have been blocked "
+                "as a precaution:\n".format(len(unreadable))
+            )
+            for name in unreadable:
+                lines.append("  - {}".format(name))
+            lines.append(
+                "\nIf this is unexpected, ask your TD to verify that "
+                "OpenImageIO tools are available in the pipeline environment."
+            )
+
         lines.append(
-            f"\nReduce texture resolution to {max_res}px or below."
+            "\nReduce texture resolution to {}px or below.".format(max_res)
         )
 
         if self._sanity_check_optional:
             lines.append(
-                "\nShow override is active \u2014 publish will proceed "
+                "\nShow override is active - publish will proceed "
                 "with this warning. Consult your supervisor before delivery."
             )
             self.log.warning("\n".join(lines))
@@ -133,20 +214,26 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
             "\n".join(lines),
             title="Texture Resolution Limit Exceeded",
             description=(
-                f"One or more textures exceed the maximum allowed resolution "
-                f"of {max_res}px.\n\n"
+                "One or more textures exceed the maximum allowed resolution "
+                "of {}px, or their dimensions could not be verified.\n\n"
                 "Publishing has been blocked to prevent downstream crashes "
                 "and wasted processing time.\n\n"
                 "If this show requires higher resolution textures, ask your "
                 "supervisor to enable 'Make Publish Validator Optional' in "
-                "the Ayon project settings for this show."
+                "the Ayon project settings for this show.".format(max_res)
             ),
         )
 
     def _get_dimensions(self, filepath):
-        """Return (width, height) of an image file without loading pixel data.
+        """Return (width, height) of an image file.
 
-        Attempts to read via Pillow first, falls back to OpenImageIO iinfo.
+        Uses get_oiio_info_for_input from ayon_core.lib.transcoding, which
+        wraps the OIIO iinfo CLI tool distributed with Ayon. This is the
+        standard ayon-core approach for reading image metadata.
+
+        If the file cannot be read, returns (None, None). The caller treats
+        this as a violation to ensure fail-safe behaviour - oversized textures
+        cannot slip through due to missing or unreadable files.
 
         Args:
             filepath (str): Absolute path to the image file.
@@ -155,53 +242,37 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
             tuple[int, int] | tuple[None, None]: Image dimensions or
                 (None, None) if the file could not be read.
         """
-        # Pillow: fast header-only read, no pixel data loaded
         try:
-            from PIL import Image, UnidentifiedImageError
-            with Image.open(filepath) as img:
-                return img.size  # (width, height)
-        except ImportError:
-            # Pillow not installed, fall through to iinfo
-            pass
-        except UnidentifiedImageError:
+            image_info = get_oiio_info_for_input(filepath)
+            if not image_info:
+                self.log.warning(
+                    "OIIO returned no info for %s", filepath
+                )
+                return None, None
+            width = image_info.get("width")
+            height = image_info.get("height")
+            if width is None or height is None:
+                self.log.warning(
+                    "OIIO info missing width/height for %s: %s",
+                    filepath, image_info
+                )
+                return None, None
+            return int(width), int(height)
+        except KeyError as exc:
             self.log.warning(
-                "Pillow could not identify image format: %s", filepath
-            )
-        except OSError as exc:
-            self.log.warning(
-                "Pillow failed to read %s: %s", filepath, exc, exc_info=True
-            )
-
-        # Fallback: OpenImageIO iinfo command-line tool.
-        # subprocess.run can raise FileNotFoundError if iinfo is not on PATH,
-        # ValueError if timeout is invalid, and subprocess.TimeoutExpired
-        # if the process hangs. We catch each explicitly.
-        try:
-            result = subprocess.run(
-                ["iinfo", filepath],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            for line in result.stdout.splitlines():
-                # iinfo output format: "filename.exr: 4096 x 4096, ..."
-                if " x " in line:
-                    parts = line.split(":")[1].strip().split()
-                    if len(parts) >= 3 and parts[1] == "x":
-                        return int(parts[0]), int(parts[2].rstrip(","))
-        except FileNotFoundError:
-            self.log.warning(
-                "iinfo not found on PATH, cannot read dimensions of %s",
-                filepath
-            )
-        except subprocess.TimeoutExpired:
-            self.log.warning(
-                "iinfo timed out reading %s", filepath
-            )
-        except (ValueError, IndexError, UnicodeDecodeError) as exc:
-            self.log.warning(
-                "Failed to parse iinfo output for %s: %s",
+                "Unexpected OIIO info structure for %s: %s",
                 filepath, exc, exc_info=True
             )
-
+        except (ValueError, TypeError) as exc:
+            self.log.warning(
+                "Could not parse OIIO dimensions for %s: %s",
+                filepath, exc, exc_info=True
+            )
+        except Exception as exc:
+            # get_oiio_info_for_input may raise if the OIIO tool is not
+            # found or the subprocess call fails unexpectedly.
+            self.log.warning(
+                "OIIO info call failed for %s: %s",
+                filepath, exc, exc_info=True
+            )
         return None, None

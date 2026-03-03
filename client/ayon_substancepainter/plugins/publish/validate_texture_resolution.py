@@ -1,24 +1,33 @@
 import os
+import logging
+import subprocess
 
 import pyblish.api
 
 from ayon_core.pipeline import PublishValidationError
-from ayon_substancepainter.api.lib import get_max_texture_resolution
+
+log = logging.getLogger(__name__)
 
 
 class ValidateTextureResolution(pyblish.api.InstancePlugin):
     """Validate that texture files do not exceed the project resolution limit.
 
     The maximum resolution is configured in Ayon project settings under:
-        substancepainter > texture_limits > max_texture_resolution
+        substancepainter > load > SubstanceLoadProjectMesh
+            > max_publish_texture_resolution
 
-    When 'sanity_check_optional' is enabled for a show, this validator is
-    demoted to a warning and does not block publish. This allows edge-cases
-    such as DMP-heavy environments or hero assets to proceed while still
-    informing the Artist that oversized textures are being published.
+    This is Gate 2 of the two-gate resolution enforcement system.
+    Gate 1 (write-time) warns the Artist via a dialog in the Write tool
+    before baking begins, but always allows bypass.
 
-    The write tool (write_textures_to_publish_location) also performs an
-    early check so Artists are warned before wasting bake time.
+    Gate 2 (this validator) hard blocks publish by default. A show can
+    request 'sanity_check_optional=True' in the project settings if they
+    have a legitimate need for higher resolution textures (e.g. DMPs).
+    When optional, this validator downgrades to a WARNING and publish
+    is allowed to proceed.
+
+    Artists submitting via Tray Publisher are also covered by this validator
+    since it is DCC-agnostic and reads from representations on disk.
     """
 
     order = pyblish.api.ValidatorOrder + 0.1
@@ -29,14 +38,23 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
     # Dynamically set from project settings in apply_settings
     optional = False
     _sanity_check_optional = False
+    _max_publish_texture_resolution = 4096
 
     @classmethod
     def apply_settings(cls, project_settings):
+        #((RDO-240226)rdo-modification
+        # Moved resolution limit settings read from lib.py into the validator
+        # class itself. get_max_texture_resolution and related helpers are no
+        # longer needed in lib.py since they are only used here.
+        # This also avoids the cyclic import risk noted in the PR review.)
         limits = (
             project_settings
-                .get("substancepainter", {})
-                .get("load", {})
-                .get("SubstanceLoadProjectMesh", {})
+            .get("substancepainter", {})
+            .get("load", {})
+            .get("SubstanceLoadProjectMesh", {})
+        )
+        cls._max_publish_texture_resolution = limits.get(
+            "max_publish_texture_resolution", 4096
         )
         cls._sanity_check_optional = limits.get("sanity_check_optional", False)
         # When the show override is active, mark the validator as optional
@@ -44,7 +62,7 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
         cls.optional = cls._sanity_check_optional
 
     def process(self, instance):
-        max_res = get_max_texture_resolution()
+        max_res = self._max_publish_texture_resolution
         if max_res == 0:
             self.log.debug(
                 "Texture resolution limit is disabled. Skipping validation."
@@ -128,6 +146,8 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
     def _get_dimensions(self, filepath):
         """Return (width, height) of an image file without loading pixel data.
 
+        Attempts to read via Pillow first, falls back to OpenImageIO iinfo.
+
         Args:
             filepath (str): Absolute path to the image file.
 
@@ -135,20 +155,28 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
             tuple[int, int] | tuple[None, None]: Image dimensions or
                 (None, None) if the file could not be read.
         """
+        # Pillow: fast header-only read, no pixel data loaded
         try:
-            from PIL import Image
+            from PIL import Image, UnidentifiedImageError
             with Image.open(filepath) as img:
                 return img.size  # (width, height)
         except ImportError:
+            # Pillow not installed, fall through to iinfo
             pass
-        except Exception as exc:
+        except UnidentifiedImageError:
             self.log.warning(
-                "Could not read dimensions of %s via Pillow: %s", filepath, exc
+                "Pillow could not identify image format: %s", filepath
+            )
+        except OSError as exc:
+            self.log.warning(
+                "Pillow failed to read %s: %s", filepath, exc, exc_info=True
             )
 
-        # Fallback: OpenImageIO iinfo command-line tool
+        # Fallback: OpenImageIO iinfo command-line tool.
+        # subprocess.run can raise FileNotFoundError if iinfo is not on PATH,
+        # ValueError if timeout is invalid, and subprocess.TimeoutExpired
+        # if the process hangs. We catch each explicitly.
         try:
-            import subprocess
             result = subprocess.run(
                 ["iinfo", filepath],
                 capture_output=True,
@@ -156,14 +184,24 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
                 timeout=10,
             )
             for line in result.stdout.splitlines():
-                # iinfo output: "filename.exr: 4096 x 4096, ..."
+                # iinfo output format: "filename.exr: 4096 x 4096, ..."
                 if " x " in line:
                     parts = line.split(":")[1].strip().split()
                     if len(parts) >= 3 and parts[1] == "x":
                         return int(parts[0]), int(parts[2].rstrip(","))
-        except Exception as exc:
+        except FileNotFoundError:
             self.log.warning(
-                "Could not read dimensions of %s via iinfo: %s", filepath, exc
+                "iinfo not found on PATH, cannot read dimensions of %s",
+                filepath
+            )
+        except subprocess.TimeoutExpired:
+            self.log.warning(
+                "iinfo timed out reading %s", filepath
+            )
+        except (ValueError, IndexError, UnicodeDecodeError) as exc:
+            self.log.warning(
+                "Failed to parse iinfo output for %s: %s",
+                filepath, exc, exc_info=True
             )
 
         return None, None

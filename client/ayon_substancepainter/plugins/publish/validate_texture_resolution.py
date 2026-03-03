@@ -276,4 +276,4 @@ class ValidateTextureResolution(pyblish.api.InstancePlugin):
                 filepath, exc, exc_info=True
             )
         return None, None
-        
+

@@ -32,13 +32,6 @@ class CreateTextures(Creator):
     settings_category = "substancepainter"
     channel_mapping = []
 
-    def apply_settings(self, project_settings):
-        settings = project_settings["substancepainter"].get("create", [])  # noqa
-        if settings:
-            self.channel_mapping = settings["CreateTextures"].get(
-                "channel_mapping", [])
-
-
     def create(self, product_name, instance_data, pre_create_data):
         if not substance_painter.project.is_open():
             raise CreatorError("Can't create a Texture Set instance without "

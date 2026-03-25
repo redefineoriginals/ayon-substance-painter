@@ -52,5 +52,5 @@ def start_plugin():
                 " please load 'ayon_plugin' in the Python menu."
             )
 
-    except Exception as exc:
+    except Exception:
         log.error("Unable to auto-load AYON plug-in", exc_info=True)

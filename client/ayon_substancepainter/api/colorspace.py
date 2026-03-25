@@ -71,24 +71,10 @@ def get_project_channel_data():
     }
 
     """
-    colon_placeholder = "%COLON%"
-    # Using placeholder to avoid the encoding issue with colon character
-    # in keys of the query dict. This is because Substance Painter's export
-    # API expects a JSON string as input and the colon character is used
-    # as a separator in JSON, which can cause issues when parsing the query
-    # dict. By using a placeholder, we can avoid this issue and ensure that
-    # the query dict is correctly parsed by Substance Painter's export API.
-    if substance_painter.application.version_info() >= (12, 0, 0):
-        colorspace_filename = (
-            f"{{'colorSpace'{colon_placeholder} '$colorSpace'}}"
-        )
-    else:
-        # Backwards compatibility with older versions of
-        # Substance Painter (11.x.x or below)
-        # which don't have json encoded issue.
-        keys = ["colorSpace"]
-        query = {key: f"${key}" for key in keys}
-        colorspace_filename = json.dumps(query)
+    # We generate a file output that contains just the colorspace and some
+    # single placeholder character (for potential empty colorspace values)
+    # to query export file list to get the resulting colorspace names
+    colorspace_filename = "_$colorSpace"
 
     config = {
         "exportPath": "/",
@@ -116,18 +102,16 @@ def get_project_channel_data():
         }],
     }
 
-    def _get_query_output(config):
+    def _get_colorspace(config):
         # Return the basename of the single output path we defined
         result = substance_painter.export.list_project_textures(config)
         path = next(iter(result.values()))[0]
-        # strip extension and slash since we know relevant json data starts
-        # and ends with { and } characters
-        path = (
-            path.strip("/\\.exr")
-            .replace(colon_placeholder, ":")
-            .replace("'", '"')
-        )
-        return json.loads(path)
+        # strip extension, path slashes and also the starting `_`
+        # from our filename (to ensure it at least has some filename)
+        colorspace = path.strip("/\\.exr")[1:]
+        return {
+            "colorSpace": colorspace,
+        }
 
     # Query for each type of channel (color and data)
     color_channel, data_channel = _get_first_color_and_data_stack_and_channel()
@@ -168,9 +152,9 @@ def get_project_channel_data():
             # bit depth
             for depth in ["8", "16", "16f", "32f"]:
                 config_map["parameters"]["bitDepth"] = depth  # noqa
-                colorspaces[key + depth] = _get_query_output(config)
+                colorspaces[key + depth] = _get_colorspace(config)
         else:
             # Data channel (not color managed)
-            colorspaces[key] = _get_query_output(config)
+            colorspaces[key] = _get_colorspace(config)
 
     return colorspaces

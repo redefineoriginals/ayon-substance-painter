@@ -17,21 +17,23 @@ from .lib import (
     get_channel_format
 )
 
-def get_colorspace_filename() -> str:
+def get_colorspace_filename(colon_identifier: str) -> str:
     """Return a colorspace filename string compatible with Substance Painter.
 
-    Provides backward compatibility across different Substance Painter
-    versions.
+    Provides backward compatibility across different Substance Painter versions.
     Versions before 12.0.0 expect clean JSON strings, while v12.0.0+ requires
     adjusted formatting.
 
+    Args:
+        colon_identifier (str): A unique string to replace colons in keys for
+        compatibility with newer Substance Painter versions.
     Returns:
         str: A JSON-formatted filename containing a colorspace placeholder.
             Example: {"colorSpace": "$colorSpace"}
     """
     keys = ["colorSpace"]
     if substance_painter.application.version_info() >= (12, 0, 0):
-        return '{{"colorSpace": "$colorSpace"}}'
+        return f"{{'colorSpace'{colon_identifier} '$colorSpace'}}"
 
     query = {key: f"${key}" for key in keys}
     return json.dumps(query)
@@ -90,6 +92,8 @@ def get_project_channel_data():
     }
 
     """
+    colon_identifier = "%COLON%"
+
     config = {
         "exportPath": "/",
         "exportShaderParams": False,
@@ -100,7 +104,7 @@ def get_project_channel_data():
 
             # List of maps making up this export preset.
             "maps": [{
-                "fileName": get_colorspace_filename(),
+                "fileName": get_colorspace_filename(colon_identifier),
                 # List of source/destination defining which channels will
                 # make up the texture file.
                 "channels": [],
@@ -126,6 +130,7 @@ def get_project_channel_data():
         if substance_painter.application.version_info() >= (12, 0, 0):
             path = (
                 path.strip("/\\.exr")
+                .replace(colon_identifier, ":")
                 .replace("'", '"')
             )
         return json.loads(path)

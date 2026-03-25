@@ -71,10 +71,16 @@ def get_project_channel_data():
     }
 
     """
-    colon_identifier = "%COLON%"
+    colon_placeholder = "%COLON%"
+    # Using placeholder to avoid the encoding issue with colon character
+    # in keys of the query dict. This is because Substance Painter's export
+    # API expects a JSON string as input and the colon character is used
+    # as a separator in JSON, which can cause issues when parsing the query
+    # dict. By using a placeholder, we can avoid this issue and ensure that
+    # the query dict is correctly parsed by Substance Painter's export API.
     if substance_painter.application.version_info() >= (12, 0, 0):
         colorspace_filename = (
-            f"{{'colorSpace'{colon_identifier} '$colorSpace'}}"
+            f"{{'colorSpace'{colon_placeholder} '$colorSpace'}}"
         )
     else:
         # Backwards compatibility with older versions of
@@ -116,13 +122,12 @@ def get_project_channel_data():
         path = next(iter(result.values()))[0]
         # strip extension and slash since we know relevant json data starts
         # and ends with { and } characters
-        path = path.strip("/\\.exr")
-        if substance_painter.application.version_info() >= (12, 0, 0):
-            path = (
-                path.strip("/\\.exr")
-                .replace(colon_identifier, ":")
-                .replace("'", '"')
-            )
+        path = (
+            path.strip("/\\.exr")
+            .replace(colon_placeholder, ":")
+            .replace("'", '"')
+        )
+        print("path:", path)
         return json.loads(path)
 
     # Query for each type of channel (color and data)

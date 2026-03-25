@@ -25,7 +25,12 @@ def get_colorspace_filename(colon_identifier: str) -> str:
         colon_identifier (str): A unique string to identify the
             position of the color space value in the output path.
     Returns:
-        str: A filename string.
+        str: A filename string with different formats based on version:
+            - New format (v12.0.0+): {'colorSpace<colon_identifier> '$colorSpace'}
+              Example with colon_identifier='%COLON%':
+              {'colorSpace%COLON% '$colorSpace'}
+            - Previous format (older versions): JSON string
+              Example: {"colorSpace": "$colorSpace"}
     """
     keys = ["colorSpace"]
     if substance_painter.application.version_info() >= (12, 0, 0):

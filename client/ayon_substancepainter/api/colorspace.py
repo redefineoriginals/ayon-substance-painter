@@ -17,26 +17,21 @@ from .lib import (
     get_channel_format
 )
 
-def get_colorspace_filename(colon_identifier: str) -> str:
-    """Backward compatibility for older versions of Substance Painter which
-    don't support the new query format with colon identifier.
+def get_colorspace_filename() -> str:
+    """Return a colorspace filename string compatible with Substance Painter.
 
-    Args:
-        colon_identifier (str): A unique string to identify the
-            position of the color space value in the output path.
+    Provides backward compatibility across different Substance Painter
+    versions.
+    Versions before 12.0.0 expect clean JSON strings, while v12.0.0+ requires
+    adjusted formatting.
+
     Returns:
-        str: A filename string with different formats based on version:
-            - New format (v12.0.0+): {
-            'colorSpace<colon_identifier> '$colorSpace'
-            }
-              Example with colon_identifier='%COLON%':
-              {'colorSpace%COLON% '$colorSpace'}
-            - Previous format (older versions): JSON string
-              Example: {"colorSpace": "$colorSpace"}
+        str: A JSON-formatted filename containing a colorspace placeholder.
+            Example: {"colorSpace": "$colorSpace"}
     """
     keys = ["colorSpace"]
     if substance_painter.application.version_info() >= (12, 0, 0):
-        return f"{{'colorSpace'{colon_identifier} '$colorSpace'}}"
+        return '{{"colorSpace": "$colorSpace"}}'
 
     query = {key: f"${key}" for key in keys}
     return json.dumps(query)
@@ -95,8 +90,6 @@ def get_project_channel_data():
     }
 
     """
-    colon_identifier = "%COLON%"
-
     config = {
         "exportPath": "/",
         "exportShaderParams": False,
@@ -107,7 +100,7 @@ def get_project_channel_data():
 
             # List of maps making up this export preset.
             "maps": [{
-                "fileName": get_colorspace_filename(colon_identifier),
+                "fileName": get_colorspace_filename(),
                 # List of source/destination defining which channels will
                 # make up the texture file.
                 "channels": [],
@@ -133,7 +126,6 @@ def get_project_channel_data():
         if substance_painter.application.version_info() >= (12, 0, 0):
             path = (
                 path.strip("/\\.exr")
-                .replace(colon_identifier, ":")
                 .replace("'", '"')
             )
         return json.loads(path)

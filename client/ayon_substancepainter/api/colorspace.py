@@ -69,11 +69,6 @@ def get_project_channel_data():
     }
 
     """
-    # We generate a file output that contains just the colorspace and some
-    # single placeholder character (for potential empty colorspace values)
-    # to query export file list to get the resulting colorspace names
-    colorspace_filename = "_$colorSpace"
-
     config = {
         "exportPath": "/",
         "exportShaderParams": False,
@@ -84,6 +79,9 @@ def get_project_channel_data():
 
             # List of maps making up this export preset.
             "maps": [{
+                # Generate filename that contains just the colorspace and a
+                # placeholder character (for potential empty colorspace values)
+                # to get colorspace name from export file list
                 "fileName": "_$colorSpace",
                 # List of source/destination defining which channels will
                 # make up the texture file.
@@ -100,9 +98,9 @@ def get_project_channel_data():
         }],
     }
 
-    def _get_colorspace(config):
+    def _get_colorspace(config_):
         # Return the basename of the single output path we defined
-        result = substance_painter.export.list_project_textures(config)
+        result = substance_painter.export.list_project_textures(config_)
         path = next(iter(result.values()))[0]
         return {
             # strip extension, path slashes and also the starting `_`

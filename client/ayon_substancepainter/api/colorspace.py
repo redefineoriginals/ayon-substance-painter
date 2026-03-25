@@ -8,14 +8,33 @@ More information see:
   - https://substance3d.adobe.com/documentation/spdoc/color-management-with-opencolorio-225969419.html
 
 """  # noqa E501
+from sys import version_info
+
+import substance_painter.application
 import substance_painter.export
-import substance_painter.js
 import json
 
 from .lib import (
     get_document_structure,
     get_channel_format
 )
+
+def get_colorspace_filename(colon_identifier: str) -> str:
+    """Backward compatibility for older versions of Substance Painter which
+    don't support the new query format with colon identifier.
+
+    Args:
+        colon_identifier (str): A unique string to identify the
+            position of the color space value in the output path.
+    Returns:
+        str: A filename string.
+    """
+    keys = ["colorSpace"]
+    if substance_painter.application.version_info() >= (12, 0, 0):
+        return f"{{'colorSpace'{colon_identifier} '$colorSpace'}}"
+
+    query = {key: f"${key}" for key in keys}
+    return json.dumps(query)
 
 
 def _iter_document_stack_channels():
@@ -71,9 +90,7 @@ def get_project_channel_data():
     }
 
     """
-
-    keys = ["colorSpace"]
-    query = {key: f"${key}" for key in keys}
+    colon_identifier = "%COLON%"
 
     config = {
         "exportPath": "/",
@@ -85,7 +102,7 @@ def get_project_channel_data():
 
             # List of maps making up this export preset.
             "maps": [{
-                "fileName": json.dumps(query),
+                "fileName": get_colorspace_filename(colon_identifier),
                 # List of source/destination defining which channels will
                 # make up the texture file.
                 "channels": [],
@@ -108,6 +125,12 @@ def get_project_channel_data():
         # strip extension and slash since we know relevant json data starts
         # and ends with { and } characters
         path = path.strip("/\\.exr")
+        if substance_painter.application.version_info() >= (12, 0, 0):
+            path = (
+                path.strip("/\\.exr")
+                .replace(colon_identifier, ":")
+                .replace("'", '"')
+            )
         return json.loads(path)
 
     # Query for each type of channel (color and data)

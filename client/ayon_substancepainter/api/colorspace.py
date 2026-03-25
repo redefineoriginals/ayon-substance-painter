@@ -20,16 +20,19 @@ from .lib import (
 def get_colorspace_filename(colon_identifier: str) -> str:
     """Return a colorspace filename string compatible with Substance Painter.
 
-    Provides backward compatibility across different Substance Painter versions.
-    Versions before 12.0.0 expect clean JSON strings, while v12.0.0+ requires
-    adjusted formatting.
+    Provides backward compatibility across different Substance
+    Painter versions.
+    Versions before 12.0.0 expect clean JSON strings, while v12.0.0+ uses the
+    colon_identifier to replace colons for compatibility.
 
     Args:
         colon_identifier (str): A unique string to replace colons in keys for
-        compatibility with newer Substance Painter versions.
+            compatibility with newer Substance Painter versions.
+
     Returns:
         str: A JSON-formatted filename containing a colorspace placeholder.
-            Example: {"colorSpace": "$colorSpace"}
+            Example with colon_identifier='%COLON%':
+            {'colorSpace%COLON% '$colorSpace'}
     """
     keys = ["colorSpace"]
     if substance_painter.application.version_info() >= (12, 0, 0):

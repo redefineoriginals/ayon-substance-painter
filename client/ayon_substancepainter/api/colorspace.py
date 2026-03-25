@@ -8,8 +8,6 @@ More information see:
   - https://substance3d.adobe.com/documentation/spdoc/color-management-with-opencolorio-225969419.html
 
 """  # noqa E501
-from sys import version_info
-
 import substance_painter.application
 import substance_painter.export
 import json

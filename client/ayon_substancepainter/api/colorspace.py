@@ -127,7 +127,6 @@ def get_project_channel_data():
             .replace(colon_placeholder, ":")
             .replace("'", '"')
         )
-        print("path:", path)
         return json.loads(path)
 
     # Query for each type of channel (color and data)

@@ -84,7 +84,7 @@ def get_project_channel_data():
 
             # List of maps making up this export preset.
             "maps": [{
-                "fileName": colorspace_filename,
+                "fileName": "_$colorSpace",
                 # List of source/destination defining which channels will
                 # make up the texture file.
                 "channels": [],
@@ -104,11 +104,10 @@ def get_project_channel_data():
         # Return the basename of the single output path we defined
         result = substance_painter.export.list_project_textures(config)
         path = next(iter(result.values()))[0]
-        # strip extension, path slashes and also the starting `_`
-        # from our filename (to ensure it at least has some filename)
-        colorspace = path.strip("/\\.exr")[1:]
         return {
-            "colorSpace": colorspace,
+            # strip extension, path slashes and also the starting `_`
+            # from our filename (to ensure it at least has some filename)
+            "colorSpace": path.strip("/\\.exr")[1:],
         }
 
     # Query for each type of channel (color and data)

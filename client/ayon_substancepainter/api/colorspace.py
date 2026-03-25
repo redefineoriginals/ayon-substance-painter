@@ -26,7 +26,9 @@ def get_colorspace_filename(colon_identifier: str) -> str:
             position of the color space value in the output path.
     Returns:
         str: A filename string with different formats based on version:
-            - New format (v12.0.0+): {'colorSpace<colon_identifier> '$colorSpace'}
+            - New format (v12.0.0+): {
+            'colorSpace<colon_identifier> '$colorSpace'
+            }
               Example with colon_identifier='%COLON%':
               {'colorSpace%COLON% '$colorSpace'}
             - Previous format (older versions): JSON string

@@ -8,7 +8,6 @@ More information see:
   - https://substance3d.adobe.com/documentation/spdoc/color-management-with-opencolorio-225969419.html
 
 """  # noqa E501
-print("DEBUG COLORSPACE FILE LOADED FROM:", __file__) 
 import substance_painter.export
 import substance_painter.js
 import json
@@ -105,12 +104,6 @@ def get_project_channel_data():
 
     def _get_query_output(config):
         result = substance_painter.export.list_project_textures(config)
-
-        print("DEBUG list_project_textures result:", repr(result))
-        print("DEBUG exportList:", repr(config.get("exportList")))
-        print("DEBUG map channels:", repr(config["exportPresets"][0]["maps"][0].get("channels")))
-        print("DEBUG map parameters:", repr(config["exportPresets"][0]["maps"][0].get("parameters")))
-
         if not result:
             raise RuntimeError(
                 "Substance Painter export query returned no results. "

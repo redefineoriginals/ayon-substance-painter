@@ -164,7 +164,8 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         image_instance.data["name"] = image_product_name
         image_instance.data["label"] = image_product_name
         image_instance.data["productName"] = image_product_name
-        image_instance.data["productType"] = product_type or product_base_type
+        # TODO how to get product type for image instance?
+        image_instance.data["productType"] = product_base_type
         image_instance.data["productBaseType"] = product_base_type
         image_instance.data["family"] = product_base_type
         image_instance.data["families"] = [product_base_type, "textures"]

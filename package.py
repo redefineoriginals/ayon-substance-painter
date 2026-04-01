@@ -1,6 +1,6 @@
 name = "substancepainter"
 title = "Substance Painter"
-version = "0.3.2+dev"
+version = "0.3.3"
 app_host_name = "substancepainter"
 client_dir = "ayon_substancepainter"
 project_can_override_addon_version = True

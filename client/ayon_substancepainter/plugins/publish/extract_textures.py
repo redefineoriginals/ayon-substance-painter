@@ -39,15 +39,15 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         Args:
             instance: The pyblish instance
         """
-        # Check if textures were pre-exported
+        # [RDO Modification] Check for pre-exported textures flag
         flags = instance.data.get("ayon_flags") or instance.data.get("flags") or {}
         textures_exported = flags.get("textures_exported", False)
 
         if textures_exported:
-            # PRE-EXPORTED PATH: Skip extraction, use existing files
+            # [RDO Modification] Pre-exported path: skip extraction
             self._process_pre_exported(instance, flags)
         else:
-            # NORMAL PATH: Export textures as usual
+            # Normal path: export textures as usual
             self._process_normal_export(instance)
 
         # Process colorspace data for all image instances
@@ -56,6 +56,7 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         # TextureSet instance should not be integrated
         instance.data["integrate"] = False
 
+    # [RDO Modification] PIPE-612: New function for handling pre-exported textures
     def _process_pre_exported(self, instance, flags):
         """Handle pre-exported textures.
         
@@ -94,15 +95,12 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         else:
             raise KnownPublishError(f"Staging directory not found: {staging_dir}")
 
-        # ===== CRITICAL: Get publish directory from image instances =====
-        #- follow the actual AYON structure
+        # [RDO Modification] Get publish directory from image instances
         publish_dir = self._get_publish_directory_from_representations(instance)
 
         log.info(f"Files will be integrated to: {publish_dir}")
 
         # Update instance with both directories
-        # stagingDir = temp location (where files are now)
-        # publishDir = final location (where integrator will copy to)
         instance.data["stagingDir"] = staging_dir
         instance.data["publishDir"] = publish_dir
 
@@ -194,6 +192,7 @@ class ExtractTextures(pyblish.api.InstancePlugin):
                     representation["colorspace"] = colorspace
                     log.debug(f"Set colorspace for {image_instance.name}: {colorspace}")
 
+    # [RDO Modification] PIPE-612: Dynamic publish directory determination
     def _get_publish_directory_from_representations(self, instance):
         """Get the publish directory from image instance representations.
         
@@ -229,14 +228,12 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         first_rep = representations[0]
         
         # Get the publish directory from representation
-        # This is set by the collector and follows the actual AYON structure
         publish_dir = first_rep.get("publishDir")
         
         if not publish_dir:
             # Fallback: try to construct from available paths
             staging_dir = first_rep.get("stagingDir")
             if staging_dir:
-                # Use staging directory (will be updated during integration)
                 publish_dir = staging_dir
             else:
                 raise KnownPublishError(
@@ -246,8 +243,6 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         log.info(f"Publish directory from representation: {publish_dir}")
         
         # Get parent directory (the image folder, not the version folder)
-        # Example: From P:\Bollywoof\assets\character\chartest\publish\image\textureMain.T_chartest_skin.rgb\v003\
-        # We want: P:\Bollywoof\assets\character\chartest\publish\image\
         parent_dir = os.path.dirname(publish_dir)  # Remove version folder (v003)
         parent_dir = os.path.dirname(parent_dir)   # Remove image-specific folder
         
@@ -257,3 +252,5 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         os.makedirs(parent_dir, exist_ok=True)
 
         return parent_dir
+    
+    

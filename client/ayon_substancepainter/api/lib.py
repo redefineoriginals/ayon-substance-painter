@@ -20,21 +20,13 @@ from ayon_core.pipeline import KnownPublishError
 log = logging.getLogger(__name__)
 
 
+# [RDO Modification] PIPE-612: Helper functions for pre-export workflow
 def build_export_config_from_instance_data(instance):
-    """Build export configuration from stored instance data.
-
-    Accepts a raw instance dict (from project metadata) and returns a
-    configuration dictionary suitable for `substance_painter.export.export_project_textures`.
-    
-    Uses a reliable built-in preset (gltf) to avoid issues with invalid custom presets.
-    """
+    """Build export configuration from stored instance data."""
     creator_attrs = instance.get("creator_attributes") or {}
     
-    # Use a reliable built-in preset
-    # Ignores potentially invalid instance preset like "resource://your_assets/BWFRO"
+    # [RDO Modification] Use reliable gltf preset, ignore invalid custom presets
     preset_url = "export-preset-generator://gltf"
-    
-    log.info(f"Using export preset: {preset_url}")
     
     config = {
         "exportShaderParams": True,
@@ -50,13 +42,11 @@ def build_export_config_from_instance_data(instance):
         }],
     }
 
-    # Determine which texture sets to export; if none specified, export all in the document.
     export_texture_sets = creator_attrs.get("exportTextureSets") or []
     if not export_texture_sets:
         export_texture_sets = [ts.name() for ts in substance_painter.textureset.all_texture_sets()]
     config["exportList"] = [{"rootPath": name} for name in export_texture_sets]
 
-    # Remove any None values to let Painter use defaults.
     params = config["exportParameters"][0]["parameters"]
     for key in list(params.keys()):
         if params[key] is None:
@@ -65,21 +55,9 @@ def build_export_config_from_instance_data(instance):
     return config
 
 
+# [RDO Modification] PIPE-612: Staging directory resolution helpers
 def _resolve_publish_texture_staging_dir(instance):
-    """Resolve the publish texture staging directory from instance data.
-
-    Looks for a staging or publish directory on the instance. If not found,
-    attempts to compute a default staging directory.
-    
-    Args:
-        instance (dict): Instance data dictionary
-        
-    Returns:
-        str: Path to staging directory
-        
-    Raises:
-        KnownPublishError: If staging directory cannot be determined or created
-    """
+    """Resolve staging directory from instance or compute default."""
     staging_dir = (
         instance.get("stagingDir")
         or instance.get("publishDir")
@@ -87,38 +65,23 @@ def _resolve_publish_texture_staging_dir(instance):
     )
     
     if not staging_dir:
-        # Try to compute a default staging directory
         try:
             staging_dir = _compute_default_staging_dir(instance)
-            log.warning(f"Staging directory not set on instance, using computed path: {staging_dir}")
         except Exception as exc:
             raise KnownPublishError(
-                f"Cannot determine publish texture staging directory from instance. "
-                f"Instance missing stagingDir/publishDir. Error: {exc}"
+                f"Cannot determine staging directory. Error: {exc}"
             )
     
     return staging_dir
 
 
+# [RDO Modification] PIPE-612: Compute default staging directory
 def _compute_default_staging_dir(instance):
-    """Compute a default staging directory if not set on instance.
-    
-    Tries to use AYON anatomy if available, falls back to temp directory.
-    
-    Args:
-        instance (dict): Instance data
-        
-    Returns:
-        str: Path to staging directory
-        
-    Raises:
-        Exception: If directory cannot be created
-    """
+    """Compute a default staging directory."""
     project_name = instance.get("projectName")
     asset_name = instance.get("assetName") or instance.get("asset")
     task_name = instance.get("taskName") or instance.get("task")
     
-    # First, try using AYON anatomy if we have all the context
     if all([project_name, asset_name, task_name]):
         try:
             return _compute_staging_dir_with_anatomy(
@@ -127,7 +90,6 @@ def _compute_default_staging_dir(instance):
         except Exception as exc:
             log.warning(f"Failed to compute staging dir with anatomy: {exc}")
     
-    # Fallback: use temp directory with project/asset structure
     if project_name and asset_name:
         temp_base = tempfile.gettempdir()
         staging_dir = os.path.join(
@@ -139,44 +101,26 @@ def _compute_default_staging_dir(instance):
             "001"
         )
     else:
-        # Last resort: just temp directory
         staging_dir = tempfile.mkdtemp(prefix="ayon_texture_")
     
-    # Create the directory
     os.makedirs(staging_dir, exist_ok=True)
     return staging_dir
 
 
+# [RDO Modification] PIPE-612: Use AYON anatomy for staging directory
 def _compute_staging_dir_with_anatomy(project_name, asset_name, task_name, instance):
-    """Compute staging directory using AYON anatomy.
-    
-    Args:
-        project_name (str): Project name
-        asset_name (str): Asset/folder name
-        task_name (str): Task name
-        instance (dict): Instance data for additional context
-        
-    Returns:
-        str: Computed staging directory path
-        
-    Raises:
-        Exception: If anatomy cannot be loaded or path cannot be created
-    """
+    """Compute staging directory using AYON anatomy."""
     from ayon_core.pipeline import Anatomy
-    from ayon_core.settings import get_current_project_settings
     
     try:
         anatomy = Anatomy(project_name)
-        project_settings = get_current_project_settings()
     except Exception as exc:
-        raise Exception(f"Failed to load anatomy for project '{project_name}': {exc}")
+        raise Exception(f"Failed to load anatomy: {exc}")
     
-    # Get work root
     work_root = anatomy.roots.get("work")
     if not work_root:
-        raise Exception("No 'work' root configured in anatomy")
+        raise Exception("No 'work' root configured")
     
-    # Build staging path
     staging_dir = os.path.join(
         work_root,
         project_name,
@@ -187,7 +131,6 @@ def _compute_staging_dir_with_anatomy(project_name, asset_name, task_name, insta
         "001"
     )
     
-    # Create the directory
     os.makedirs(staging_dir, exist_ok=True)
     return staging_dir
 
@@ -298,26 +241,20 @@ def write_textures_to_publish_location(parent=None):
     set_instance(instance["instance_id"], instance, update=True)
     return publish_dir
 
-def write_textures_to_publish_location_selective(parent=None):
-    """
-    Export textures for a textureSet instance with selective material/UDIM options.
 
-    Runs outside of the Pyblish publish loop. Allows users to:
-    - Select which materials/texture sets to export
-    - Select which UDIMs to export (or all)
-    - Choose between creating new version or overwriting current version
+# [RDO Modification] PIPE-612: New function for selective pre-export
+def write_textures_to_publish_location_selective(parent=None):
+    """Export textures with selective material and UDIM options.
     
-    Args:
-        parent: Parent widget for dialogs
+    Runs outside publish loop. Allows artist to choose which materials
+    and UDIMs to export, and whether to create new version or overwrite.
     """
     from .pipeline import get_instances_by_id, set_instance
     from .pre_export_dialog import PreExportDialog, ExportStrategyDialog
     
-    # Ensure a project is open
     if not substance_painter.project.is_open():
         raise KnownPublishError("No Substance Painter project is open.")
 
-    # Get instances and find textureSet instances
     instances_by_id = get_instances_by_id()
     texture_instances = [
         inst
@@ -330,7 +267,6 @@ def write_textures_to_publish_location_selective(parent=None):
     if not texture_instances:
         raise KnownPublishError("No 'textureSet' instances found. Create one first.")
 
-    # Select instance if multiple
     instance = None
     if len(texture_instances) == 1:
         instance = texture_instances[0]
@@ -355,10 +291,7 @@ def write_textures_to_publish_location_selective(parent=None):
         except Exception:
             instance = texture_instances[0]
 
-    # Get available texture sets in the Substance Painter project
     all_texture_sets = [ts.name() for ts in substance_painter.textureset.all_texture_sets()]
-    
-    # Get available UDIMs from first texture set
     all_udims = []
     if all_texture_sets:
         try:
@@ -367,7 +300,6 @@ def write_textures_to_publish_location_selective(parent=None):
         except Exception as exc:
             log.warning(f"Failed to get UDIMs: {exc}")
     
-    # Show pre-export dialog
     dialog = PreExportDialog(
         texture_sets=all_texture_sets,
         udim_tiles=all_udims,
@@ -378,24 +310,20 @@ def write_textures_to_publish_location_selective(parent=None):
         raise KnownPublishError("Pre-export cancelled by user")
     
     selected_materials = dialog.get_selected_materials()
-    selected_udims = dialog.get_selected_udims()  # Empty list = all UDIMs
+    selected_udims = dialog.get_selected_udims()
     export_strategy = dialog.get_strategy()
     
-    log.info(f"Export settings: materials={selected_materials}, udims={selected_udims}, strategy={export_strategy}")
+    log.info(f"Exporting {len(selected_materials)} materials with strategy: {export_strategy}")
     
-    # Build export config
     config = build_export_config_from_instance_data(instance)
     
-    # Filter texture sets based on selection
     if selected_materials:
         config["exportList"] = [{"rootPath": name} for name in selected_materials]
     
-    # Determine export path
     publish_dir = _resolve_publish_texture_staging_dir(instance)
     
     # Handle versioning
     if export_strategy == "version":
-        # Always create new version
         if os.path.exists(publish_dir):
             base_dir = os.path.dirname(publish_dir)
             current_name = os.path.basename(publish_dir)
@@ -413,7 +341,6 @@ def write_textures_to_publish_location_selective(parent=None):
                 publish_dir = os.path.join(base_dir, new_dir_name)
     
     elif export_strategy == "overwrite":
-        # Ask user if version exists
         if os.path.exists(publish_dir):
             base_dir = os.path.dirname(publish_dir)
             current_name = os.path.basename(publish_dir)
@@ -429,7 +356,6 @@ def write_textures_to_publish_location_selective(parent=None):
                 next_version = (max(versions) + 1) if versions else 1
                 new_dir_name = f"{next_version:03d}"
                 
-                # Ask user if they want to overwrite or version up
                 strategy_dialog = ExportStrategyDialog(
                     current_name,
                     new_dir_name,
@@ -439,91 +365,32 @@ def write_textures_to_publish_location_selective(parent=None):
                 if strategy_dialog.exec_() != QtWidgets.QDialog.Accepted:
                     raise KnownPublishError("Pre-export cancelled by user")
                 
-                choice = strategy_dialog.get_choice()
-                if choice == "version":
+                if strategy_dialog.get_choice() == "version":
                     publish_dir = os.path.join(base_dir, new_dir_name)
     
-    # Create directory
     os.makedirs(publish_dir, exist_ok=True)
     config["exportPath"] = publish_dir
     
-    # ===== DIAGNOSTIC OUTPUT =====
-    log.info("\n" + "="*80)
-    log.info("TEXTURE EXPORT DIAGNOSTIC")
-    log.info("="*80)
-    log.info(f"Config exportPath: {config.get('exportPath')}")
-    log.info(f"Config defaultExportPreset: {config.get('defaultExportPreset')}")
-    log.info(f"Config exportList: {config.get('exportList')}")
-    log.info(f"Publish directory: {publish_dir}")
-    log.info(f"Directory exists: {os.path.exists(publish_dir)}")
-    log.info(f"Directory writable: {os.access(publish_dir, os.W_OK)}")
-    log.info("="*80)
-    
-    # Export
     export_channel = instance.get("creator_attributes", {}).get("exportChannel", [])
     node_ids = instance.get("selected_node_id", [])
     
-    log.info("Starting export...")
     with set_layer_stack_opacity(node_ids, export_channel):
         result = substance_painter.export.export_project_textures(config)
-    
-    # ===== DIAGNOSTIC: Check result =====
-    log.info("\n" + "="*80)
-    log.info("EXPORT RESULT")
-    log.info("="*80)
-    log.info(f"Status: {result.status}")
-    log.info(f"Message: {result.message}")
-    log.info(f"Textures exported: {len(result.textures)} sets/stacks")
-    
-    total_files = 0
-    for (texture_set_name, stack_name), maps in result.textures.items():
-        log.info(f"\n  {texture_set_name} / {stack_name}:")
-        for i, texture_map in enumerate(maps):
-            log.info(f"    [{i}] {texture_map}")
-            total_files += 1
-    
-    log.info(f"\nTotal files in result: {total_files}")
-    
-    # Check what's actually on disk
-    log.info(f"\nChecking disk at: {publish_dir}")
-    if os.path.exists(publish_dir):
-        disk_files = []
-        for root, dirs, files in os.walk(publish_dir):
-            for file in files:
-                filepath = os.path.join(root, file)
-                file_size = os.path.getsize(filepath)
-                rel_path = os.path.relpath(filepath, publish_dir)
-                disk_files.append(filepath)
-                log.info(f"  ✓ {rel_path} ({file_size} bytes)")
-        
-        if not disk_files:
-            log.warning(" DIRECTORY IS EMPTY - NO FILES FOUND!")
-        else:
-            log.info(f"\n  Total files on disk: {len(disk_files)}")
-    else:
-        log.error(f"  DIRECTORY DOES NOT EXIST!")
-    
-    log.info("="*80 + "\n")
-    # ===== END DIAGNOSTIC =====
     
     if result.status != substance_painter.export.ExportStatus.Success:
         raise KnownPublishError(f"Texture export failed: {result.message}")
     
-    # Mark instance as pre-exported
     flags = instance.setdefault("ayon_flags", {})
     flags["textures_exported"] = True
-    
-    # Store which materials/UDIMs were exported for reference
     flags["exported_materials"] = selected_materials
     flags["exported_udims"] = selected_udims
     flags["export_strategy"] = export_strategy
     
-    # Update instance
     instance["stagingDir"] = publish_dir
     instance["publishDir"] = publish_dir
     set_instance(instance["instance_id"], instance, update=True)
     
-    log.info(f"Pre-export completed. Textures written to: {publish_dir}")
+    log.info(f"Textures exported to: {publish_dir}")
     return publish_dir
 
 
@@ -534,6 +401,7 @@ def get_export_presets():
         dict: {Resource url: GUI Label}
 
     """
+    #TODO: Find more optimal way to find all export templates
     preset_resources = {}
     for shelf in substance_painter.resource.Shelves.all():
         shelf_path = os.path.normpath(shelf.path())
@@ -559,6 +427,8 @@ def get_export_presets():
                                    key=lambda x: x[1]))
 
     # Add default built-ins at the start
+    # TODO: find the built-ins automatically; scraped with
+    #  https://gist.github.com/BigRoy/97150c7c6f0a0c916418207b9a2bc8f1
     result = {
         "export-preset-generator://viewport2d": "2D View",  # noqa E501
         "export-preset-generator://doc-channel-normal-no-alpha": "Document channels + Normal + AO (No Alpha)",  # noqa E501
@@ -935,7 +805,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
     outputs = substance_painter.export.list_project_textures(config)
     templates = get_export_templates(config, strip_folder=False)
 
-    # Get project channel data with safe None handling
+    # [RDO Modification] Safe None handling for get_project_channel_data
     channel_data = get_project_channel_data() or {}
     project_colorspaces = set(
         data["colorSpace"]
@@ -1248,6 +1118,7 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
     target_maps = []
 
     export_presets = get_export_presets()
+    # [RDO Modification] Safe .get() access for export preset
     export_preset_nice_name = export_presets.get(export_preset_name)
     
     if not export_preset_nice_name:
@@ -1288,7 +1159,6 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
         else:
             target_maps = all_output_maps
     
-    # Create a new preset
     return {
         "exportPresets": [
             {
@@ -1338,3 +1208,4 @@ def set_layer_stack_opacity(node_ids, channel_types):
         for node in excluded_nodes:
             for channel, opacity in original_opacity_values:
                 node.set_opacity(opacity, channel)
+

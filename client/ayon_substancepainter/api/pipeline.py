@@ -204,13 +204,8 @@ class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
             lambda: host_tools.show_workfiles(parent=parent)
         )
 
-        # --- Pre-export textures action ---
-        # Add a menu entry to allow artists to pre-export textures before
-        # entering the publish loop. This calls the helper function in
-        # ayon_substancepainter.api.lib which writes textures directly to
-        # the publish location and sets a flag so the publish extractor
-        # will skip re-exporting. See USER-612 for details.
-        from . import lib as _ayon_sp_lib  # local import to avoid circular deps
+        # [RDO Modification] PIPE-612: Pre-export textures menu action
+        from . import lib as _ayon_sp_lib
 
         def _pre_export_textures():
             """Callback to pre-export textures with selective options.
@@ -491,3 +486,5 @@ def get_instances_by_id():
 def get_instances():
     """Return all instances stored in the project instances as a list"""
     return list(get_instances_by_id().values())
+
+

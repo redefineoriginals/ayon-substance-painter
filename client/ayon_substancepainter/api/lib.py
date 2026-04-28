@@ -195,6 +195,86 @@ def check_texture_resolution_before_write(parent=None):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# (USER-735)rdo-modification
+# Pipe-controlled export preset (CPV setting).
+# get_pipe_export_preset_path reads the configured .spexp path from Ayon
+# settings and validates it exists on disk — hard failure, no silent fallback.
+# get_pipe_export_preset_url registers the preset under an ayon_pipe shelf
+# and returns the resource URL ready to use in exportPresetUrl.)
+# ---------------------------------------------------------------------------
+
+
+def get_pipe_export_preset_path():
+    """Return the pipe-controlled export preset path from project settings.
+
+    Reads ``substancepainter > pipe_template > export_preset_path``.
+    Raises ``FileNotFoundError`` if the path is set but missing on disk.
+
+    Returns:
+        str: Path to the ``.spexp`` file, or empty string if unconfigured.
+    """
+    try:
+        from ayon_core.pipeline import get_current_project_settings
+        project_settings = get_current_project_settings()
+        path = (
+            project_settings
+            .get("substancepainter", {})
+            .get("pipe_template", {})
+            .get("export_preset_path", "")
+        )
+    except Exception as exc:
+        log.warning("Could not read pipe export preset settings: %s", exc)
+        return ""
+
+    if not path:
+        return ""
+
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"SubstancePresetNotFound: {path!r}\n"
+            "Check substancepainter > Pipe Template > Export Preset Path "
+            "in Ayon Studio Settings."
+        )
+
+    return path
+
+
+def get_pipe_export_preset_url():
+    """Return the resource URL for the pipe-controlled export preset.
+
+    Registers the preset under a dedicated ``ayon_pipe`` shelf and returns
+    its resource URL for use in ``exportPresetUrl``.
+
+    Returns:
+        str: Resource URL, or empty string if no pipe preset is configured.
+    """
+    path = get_pipe_export_preset_path()
+    if not path:
+        return ""
+
+    preset_dir = os.path.dirname(path)
+    preset_name = os.path.splitext(os.path.basename(path))[0]
+
+    shelf_name = "ayon_pipe"
+    try:
+        load_shelf(preset_dir, name=shelf_name)
+    except ValueError as exc:
+        log.warning("Failed to register pipe preset shelf: %s", exc)
+        return ""
+
+    resource = substance_painter.resource.ResourceID(
+        context=shelf_name,
+        name=preset_name,
+    )
+    return resource.url()
+
+
+# ---------------------------------------------------------------------------
+# End USER-735
+# ---------------------------------------------------------------------------
+
+
 def get_export_presets():
     """Return Export Preset resource URLs for all available Export Presets.
 
@@ -1014,3 +1094,5 @@ def set_layer_stack_opacity(node_ids, channel_types):
         for node in excluded_nodes:
             for channel, opacity in original_opacity_values:
                 node.set_opacity(opacity, channel)
+
+ 

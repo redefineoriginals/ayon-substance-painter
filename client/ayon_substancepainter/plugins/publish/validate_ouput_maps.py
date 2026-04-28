@@ -7,6 +7,7 @@ import substance_painter.export
 
 from ayon_core.pipeline import PublishValidationError
 
+from ayon_substancepainter.api.lib import get_pipe_export_preset_url
 
 class ValidateOutputMaps(pyblish.api.InstancePlugin):
     """Validate all output maps for Output Template are generated.
@@ -23,6 +24,14 @@ class ValidateOutputMaps(pyblish.api.InstancePlugin):
     families = ["textureSet"]
 
     def process(self, instance):
+
+        # (USER-735)[RDO-modification]
+        # Enforce that the active export preset matches the pipe-controlled
+        # preset when one is configured. Blocks publish if an artist has
+        # swapped it out, ensuring colour management and naming conventions
+        # are always met.)
+        self._validate_pipe_preset(instance)
+        # End USER-735
 
         config = instance.data["exportConfig"]
 
@@ -114,6 +123,31 @@ class ValidateOutputMaps(pyblish.api.InstancePlugin):
                 title="Missing output maps"
             )
 
+
+    # (USER-735)[RDO-modification]
+    def _validate_pipe_preset(self, instance):
+        """Raise if a pipe preset is configured but not used on this instance.
+
+        Args:
+            instance (pyblish.api.Instance): The texture set instance.
+        """
+        pipe_url = get_pipe_export_preset_url()
+        if not pipe_url:
+            return
+
+        creator_attrs = instance.data.get("creator_attributes", {})
+        active_url = creator_attrs.get("exportPresetUrl", "")
+        if active_url != pipe_url:
+            raise PublishValidationError(
+                f"Export preset does not match the pipe-controlled preset.\n\n"
+                f"Expected: {pipe_url}\n"
+                f"Active:   {active_url}\n\n"
+                "Change the Output Template on the instance to the "
+                "pipe preset before publishing.",
+                title="Wrong export preset"
+            )
+    # End USER-735
+
     def get_invalid_channels(self, instance, config):
         """Function to get invalid channel(s) from export channel
         filtering
@@ -151,3 +185,4 @@ class ValidateOutputMaps(pyblish.api.InstancePlugin):
                         invalid_channel.append(channel)
 
         return invalid_channel
+    

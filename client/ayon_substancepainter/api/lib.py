@@ -1095,4 +1095,4 @@ def set_layer_stack_opacity(node_ids, channel_types):
             for channel, opacity in original_opacity_values:
                 node.set_opacity(opacity, channel)
 
- 
+

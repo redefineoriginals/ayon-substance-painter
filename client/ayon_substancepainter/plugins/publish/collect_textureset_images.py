@@ -110,10 +110,7 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         map_identifier = strip_template(template)
         suffix += f".{map_identifier}"
 
-        # Keep product type from instance if was customized
-        product_type = instance.data["productType"]
-        if product_type == instance.data["productBaseType"]:
-            product_type = None
+        product_type = instance.data["image_product_type"]
 
         # TODO: The product type actually isn't 'texture' currently but
         #   for now this is only done so the product name starts with

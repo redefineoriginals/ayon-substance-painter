@@ -16,6 +16,7 @@ import substance_painter.textureset
 from qtpy import QtGui, QtWidgets, QtCore
 
 from ayon_core.pipeline import KnownPublishError
+from ayon_core.pipeline import Anatomy
 
 log = logging.getLogger(__name__)
 

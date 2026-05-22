@@ -119,7 +119,7 @@ def _compute_staging_dir_with_anatomy(project_name, asset_name, task_name, insta
     
     work_root = anatomy.roots.get("work")
     if not work_root:
-        raise Exception("No 'work' root configured")
+        raise Exception(f"No 'work' root configured in {project_name} AYON anatomy.")
     
     staging_dir = os.path.join(
         work_root,

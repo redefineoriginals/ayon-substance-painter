@@ -5,7 +5,7 @@ Handles both:
 1. Normal export (when textures haven't been pre-exported)
 2. Pre-exported textures (from the Pre-Export Textures UI action)
 
-This dynamically determines the publish directory from the
+This dynamically determines the staging directory from the
 image instance representations, following the actual AYON structure.
 """
 
@@ -33,7 +33,7 @@ class ExtractTextures(pyblish.api.InstancePlugin):
     families = ["textureSet"]
     optional = False
 
-    def process(self, instance):
+    def process(self, instance: pyblish.api.Instance) -> None:
         """Process texture extraction or skip if pre-exported.
         
         Args:
@@ -230,15 +230,14 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         # Get the publish directory from representation
         publish_dir = first_rep.get("publishDir")
         
+        # Get the publish directory from representation
+        publish_dir = first_rep.get("publishDir")
+        
         if not publish_dir:
-            # Fallback: try to construct from available paths
-            staging_dir = first_rep.get("stagingDir")
-            if staging_dir:
-                publish_dir = staging_dir
-            else:
-                raise KnownPublishError(
-                    "Cannot determine publish directory from representation"
-                )
+            raise KnownPublishError(
+                f"No publishDir set on representation for {first_image.name}. "
+                "Check AYON publish templates and anatomy configuration."
+            )
 
         log.info(f"Publish directory from representation: {publish_dir}")
         

@@ -30,7 +30,7 @@ def build_export_config_from_instance_data(instance):
     
     config = {
         "exportShaderParams": True,
-        "exportPath": "__REPLACE_ME__",
+        # exportPath will be set by caller after validation
         "defaultExportPreset": preset_url,
         "exportParameters": [{
             "parameters": {
@@ -56,8 +56,18 @@ def build_export_config_from_instance_data(instance):
 
 
 # [RDO Modification] PIPE-612: Staging directory resolution helpers
-def _resolve_publish_texture_staging_dir(instance):
-    """Resolve staging directory from instance or compute default."""
+def _resolve_publish_texture_staging_dir(instance: dict) -> str:
+    """Resolve staging directory from instance or compute from anatomy.
+    
+    Args:
+        instance (dict): Instance data dictionary
+        
+    Returns:
+        str: Path to staging directory
+        
+    Raises:
+        KnownPublishError: If publishDir not set
+    """
     staging_dir = (
         instance.get("stagingDir")
         or instance.get("publishDir")
@@ -65,18 +75,17 @@ def _resolve_publish_texture_staging_dir(instance):
     )
     
     if not staging_dir:
-        try:
-            staging_dir = _compute_default_staging_dir(instance)
-        except Exception as exc:
-            raise KnownPublishError(
-                f"Cannot determine staging directory. Error: {exc}"
-            )
+        # publishDir should always be set by AYON's collectors
+        # If missing, it's a configuration error that needs fixing
+        raise KnownPublishError(
+            "publishDir not set in instance. "
+            "Check AYON publish templates and anatomy configuration."
+        )
     
     return staging_dir
 
-
 # [RDO Modification] PIPE-612: Compute default staging directory
-def _compute_default_staging_dir(instance):
+def _compute_default_staging_dir(instance: dict) -> str:
     """Compute a default staging directory."""
     project_name = instance.get("projectName")
     asset_name = instance.get("assetName") or instance.get("asset")
@@ -92,13 +101,16 @@ def _compute_default_staging_dir(instance):
     
     if project_name and asset_name:
         temp_base = tempfile.gettempdir()
+        # Texture set exports are versioned: 001, 002, 003...
+        # Start with 001 for first export (will increment if re-exported)
+        texture_version = "001"
         staging_dir = os.path.join(
             temp_base,
             "ayon_texture_export",
             project_name,
             asset_name,
             "textureSet",
-            "001"
+            texture_version
         )
     else:
         staging_dir = tempfile.mkdtemp(prefix="ayon_texture_")
@@ -108,7 +120,12 @@ def _compute_default_staging_dir(instance):
 
 
 # [RDO Modification] PIPE-612: Use AYON anatomy for staging directory
-def _compute_staging_dir_with_anatomy(project_name, asset_name, task_name, instance):
+def _compute_staging_dir_with_anatomy(
+    project_name: str,
+    asset_name: str,
+    task_name: str,
+    instance: dict
+) -> str:
     """Compute staging directory using AYON anatomy."""
     from ayon_core.pipeline import Anatomy
     
@@ -133,114 +150,6 @@ def _compute_staging_dir_with_anatomy(project_name, asset_name, task_name, insta
     
     os.makedirs(staging_dir, exist_ok=True)
     return staging_dir
-
-
-def write_textures_to_publish_location(parent=None):
-    """
-    Export textures for a textureSet instance to its publish location.
-
-    Runs outside of the Pyblish publish loop to avoid holding database
-    connections open. Writes textures into the final publish staging
-    directory and sets a flag on the instance so the publish extractor
-    can skip exporting again.
-    """
-    # Ensure a project is open.
-    if not substance_painter.project.is_open():
-        raise KnownPublishError("No Substance Painter project is open.")
-
-    # Defer importing these functions to avoid circular import issues.
-    from .pipeline import get_instances_by_id, set_instance
-
-    # Retrieve stored instances and find textureSet instances.
-    instances_by_id = get_instances_by_id()
-    texture_instances = [
-        inst
-        for inst in instances_by_id.values()
-        if inst.get("productType") == "textureSet"
-        or inst.get("family") == "textureSet"
-        or "textureSet" in (inst.get("families") or [])
-    ]
-
-    if not texture_instances:
-        raise KnownPublishError("No 'textureSet' instances found. Create one first.")
-
-    # If multiple texture set instances are present, prompt the user to select
-    # which one to export. Otherwise default to the sole instance.
-    instance = None
-    if len(texture_instances) == 1:
-        instance = texture_instances[0]
-    else:
-        try:
-            items = []
-            # Derive a display label for each instance; fall back to id
-            for inst in texture_instances:
-                label = inst.get("productName") or inst.get("label") or inst.get("name") or inst.get("instance_id")
-                items.append(label)
-            # Show a list selection dialog
-            item, ok = QtWidgets.QInputDialog.getItem(
-                parent or QtWidgets.QApplication.activeWindow(),
-                "Select Texture Set",
-                "Choose the texture set instance to export:",
-                items,
-                0,
-                False,
-            )
-            if ok:
-                index = items.index(item)
-                instance = texture_instances[index]
-            else:
-                raise KnownPublishError("Pre-export cancelled: no instance selected")
-        except Exception:
-            # Fall back to first instance if Qt is unavailable or selection fails
-            instance = texture_instances[0]
-
-    # Build export configuration from the instance data.
-    config = build_export_config_from_instance_data(instance)
-
-    # Determine export path and ensure the directory exists.
-    publish_dir = _resolve_publish_texture_staging_dir(instance)
-    if os.path.exists(publish_dir):
-        base_dir = os.path.dirname(publish_dir)
-        current_name = os.path.basename(publish_dir)
-        # Only version up if the folder name is a purely numeric string
-        if current_name.isdigit():
-            # Gather all existing numeric version directories
-            versions = []
-            for name in os.listdir(base_dir):
-                if name.isdigit():
-                    try:
-                        versions.append(int(name))
-                    except ValueError:
-                        pass
-            next_version = (max(versions) + 1) if versions else 1
-            new_dir_name = f"{next_version:03d}"
-            publish_dir = os.path.join(base_dir, new_dir_name)
-    
-    # Create the final export directory
-    os.makedirs(publish_dir, exist_ok=True)
-    config["exportPath"] = publish_dir
-
-    # Determine channels and layer IDs for export.
-    export_channel = instance.get("creator_attributes", {}).get("exportChannel", [])
-    node_ids = instance.get("selected_node_id", [])
-
-    # Perform the export with the correct layer visibility.
-    with set_layer_stack_opacity(node_ids, export_channel):
-        result = substance_painter.export.export_project_textures(config)
-
-    if result.status != substance_painter.export.ExportStatus.Success:
-        raise KnownPublishError(f"Texture export failed: {result.message}")
-
-    # Mark instance so publish extractor knows textures are already exported.
-    flags = instance.setdefault("ayon_flags", {})
-    flags["textures_exported"] = True
-
-    # Persist the updated instance data back into metadata.
-    instance["stagingDir"] = publish_dir
-    instance["publishDir"] = publish_dir
-    set_instance(instance["instance_id"], instance, update=True)
-    return publish_dir
-
 
 # [RDO Modification] PIPE-612: New function for selective pre-export
 def write_textures_to_publish_location_selective(parent=None):

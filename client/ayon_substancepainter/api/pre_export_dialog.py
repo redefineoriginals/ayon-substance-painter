@@ -351,6 +351,4 @@ class ExportStrategyDialog(QtWidgets.QDialog):
     
     def get_choice(self):
         """Return user's choice: 'overwrite' or 'version'."""
-
-
         return self.choi

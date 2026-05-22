@@ -3,23 +3,27 @@
 import os
 import logging
 from functools import partial
-
+ 
 # Substance 3D Painter modules
 import substance_painter.ui
 import substance_painter.event
 import substance_painter.project
-
+import substance_painter.export
+ 
 import pyblish.api
-
+ 
+from qtpy import QtWidgets, QtCore
+ 
 from ayon_core.host import HostBase, IWorkfileHost, ILoadHost, IPublishHost
 from ayon_core.settings import get_current_project_settings
-
+ 
 from ayon_core.pipeline.template_data import get_template_data_with_names
 from ayon_core.pipeline import (
     register_creator_plugin_path,
     register_loader_plugin_path,
     AVALON_CONTAINER_ID,
     Anatomy,
+    KnownPublishError,
 )
 from ayon_core.lib import (
     StringTemplate,
@@ -28,10 +32,17 @@ from ayon_core.lib import (
 )
 from ayon_core.pipeline.load import any_outdated_containers
 from ayon_substancepainter import SUBSTANCE_HOST_DIR
-
+ 
 from . import lib
-
-log = logging.getLogger("ayon_substancepainter")
+ 
+# Import lib functions used in pre-export workflow
+from .lib import (
+    build_export_config_from_instance_data,
+    _resolve_publish_texture_staging_dir,
+    _select_texture_instance_from_dialog,
+    write_textures_to_publish_location_selective,
+    set_layer_stack_opacity,
+)
 
 PLUGINS_DIR = os.path.join(SUBSTANCE_HOST_DIR, "plugins")
 PUBLISH_PATH = os.path.join(PLUGINS_DIR, "publish")
@@ -44,6 +55,93 @@ OPENPYPE_METADATA_CONTAINERS_KEY = "containers"  # child key
 OPENPYPE_METADATA_CONTEXT_KEY = "context"        # child key
 OPENPYPE_METADATA_INSTANCES_KEY = "instances"    # child key
 
+#[RDO Modification] PIPE-612: Pre-export workflow function
+def write_textures_to_publish_location(parent=None) -> str:
+    """Export textures for a textureSet instance to its publish location.
+ 
+    Runs outside of the Pyblish publish loop to avoid holding database
+    connections open. Writes textures into the final publish staging
+    directory and sets a flag on the instance so the publish extractor
+    can skip exporting again.
+    
+    Args:
+        parent (QtWidgets.QWidget, optional): Parent widget for dialogs
+        
+    Returns:
+        str: Path to the published texture directory
+        
+    Raises:
+        KnownPublishError: If no project open, no instances found, or export fails
+    """
+    # Ensure a project is open.
+    if not substance_painter.project.is_open():
+        raise KnownPublishError("No Substance Painter project is open.")
+ 
+    # Retrieve stored instances and find textureSet instances.
+    instances_by_id = get_instances_by_id()
+    texture_instances = [
+        inst
+        for inst in instances_by_id.values()
+        if inst.get("productType") == "textureSet"
+        or inst.get("family") == "textureSet"
+        or "textureSet" in (inst.get("families") or [])
+    ]
+ 
+    if not texture_instances:
+        raise KnownPublishError("No 'textureSet' instances found. Create one first.")
+ 
+    # Use shared helper function for dialog selection
+    instance = _select_texture_instance_from_dialog(texture_instances, parent)
+ 
+    # Build export configuration from the instance data.
+    config = build_export_config_from_instance_data(instance)
+ 
+    # Determine export path and ensure the directory exists.
+    publish_dir = _resolve_publish_texture_staging_dir(instance)
+    if os.path.exists(publish_dir):
+        base_dir = os.path.dirname(publish_dir)
+        current_name = os.path.basename(publish_dir)
+        # Only version up if the folder name is a purely numeric string (e.g., "001", "002")
+        if current_name.isdigit():
+            # Gather all existing numeric version directories (e.g., "001", "002", "003")
+            versions = []
+            for name in os.listdir(base_dir):
+                if name.isdigit():
+                    try:
+                        versions.append(int(name))
+                    except ValueError:
+                        pass
+            # Calculate next version: if "001" exists, next is "002"
+            next_version = (max(versions) + 1) if versions else 1
+            new_dir_name = f"{next_version:03d}"  # Formats as "001", "002", "003"...
+            publish_dir = os.path.join(base_dir, new_dir_name)
+    
+    # Create the final export directory
+    os.makedirs(publish_dir, exist_ok=True)
+    config["exportPath"] = publish_dir
+ 
+    # Determine channels and layer IDs for export.
+    export_channel = instance.get("creator_attributes", {}).get("exportChannel", [])
+    node_ids = instance.get("selected_node_id", [])
+ 
+    # Perform the export with the correct layer visibility.
+    with set_layer_stack_opacity(node_ids, export_channel):
+        result = substance_painter.export.export_project_textures(config)
+ 
+    if result.status != substance_painter.export.ExportStatus.Success:
+        error_msg = f"Texture export failed: {result.message}"
+        log.error(error_msg, exc_info=True)
+        raise KnownPublishError(error_msg)
+ 
+    # Mark instance so publish extractor knows textures are already exported.
+    flags = instance.setdefault("ayon_flags", {})
+    flags["textures_exported"] = True
+ 
+    # Persist the updated instance data back into metadata.
+    instance["stagingDir"] = publish_dir
+    instance["publishDir"] = publish_dir
+    set_instance(instance["instance_id"], instance, update=True)
+    return publish_dir
 
 class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
     name = "substancepainter"
@@ -236,7 +334,7 @@ class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
                 log.info("Starting selective texture pre-export...")
                 
                 # Use the new selective export function
-                publish_dir = _ayon_sp_lib.write_textures_to_publish_location_selective(parent=parent)
+                publish_dir = write_textures_to_publish_location_selective(parent=parent)
                 progress_dialog.close()
 
                 log.info(f"Pre-export completed. Textures written to: {publish_dir}")

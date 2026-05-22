@@ -37,7 +37,7 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         """Process texture extraction or skip if pre-exported.
         
         Args:
-            instance: The pyblish instance
+            instance (pyblish.api.Instance): The pyblish instance
         """
         # [RDO Modification] Check for pre-exported textures flag
         flags = instance.data.get("ayon_flags") or instance.data.get("flags") or {}

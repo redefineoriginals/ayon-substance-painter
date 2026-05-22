@@ -243,7 +243,7 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         log.info(f"Publish directory from representation: {publish_dir}")
         
         # Get parent directory (the image folder, not the version folder)
-        parent_dir = os.path.dirname(publish_dir)  # Remove version folder (v003)
+        parent_dir = os.path.dirname(publish_dir)  # Remove version folder (003)
         parent_dir = os.path.dirname(parent_dir)   # Remove image-specific folder
         
         log.info(f"Parent publish directory: {parent_dir}")

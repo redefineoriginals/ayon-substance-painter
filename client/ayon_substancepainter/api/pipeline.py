@@ -303,8 +303,6 @@ class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
         )
 
         # [RDO Modification] PIPE-612: Pre-export textures menu action
-        from . import lib as _ayon_sp_lib
-
         def _pre_export_textures():
             """Callback to pre-export textures with selective options.
 

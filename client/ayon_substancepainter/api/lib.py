@@ -20,7 +20,57 @@ from ayon_core.pipeline import Anatomy
 
 log = logging.getLogger(__name__)
 
-
+# [RDO Modification] PIPE-612: Helper function for dialog selection
+def _select_texture_instance_from_dialog(texture_instances, parent=None):
+    """Select a texture instance from user dialog.
+    
+    Args:
+        texture_instances (list): List of texture instances to choose from
+        parent (QtWidgets.QWidget, optional): Parent widget for dialog
+        
+    Returns:
+        dict: The selected texture instance
+        
+    Raises:
+        KnownPublishError: If no instances available or user cancels
+    """
+    if not texture_instances:
+        raise KnownPublishError("No 'textureSet' instances found. Create one first.")
+    
+    # If only one instance, return it directly
+    if len(texture_instances) == 1:
+        return texture_instances[0]
+    
+    # Multiple instances - show dialog
+    try:
+        items = [
+            inst.get("productName") or inst.get("label") or inst.get("name") or inst.get("instance_id")
+            for inst in texture_instances
+        ]
+        item, ok = QtWidgets.QInputDialog.getItem(
+            parent or QtWidgets.QApplication.activeWindow(),
+            "Select Texture Set",
+            "Choose the texture set instance to export:",
+            items,
+            0,
+            False,
+        )
+        if ok:
+            index = items.index(item)
+            return texture_instances[index]
+        else:
+            raise KnownPublishError("Pre-export cancelled: no instance selected")
+    except KnownPublishError:
+        # Re-raise user cancellation
+        raise
+    except Exception as e:
+        # Only fall back if dialog system itself failed (Qt unavailable)
+        log.warning(
+            f"Dialog unavailable ({type(e).__name__}), "
+            f"using first texture set. Error: {e}"
+        )
+        return texture_instances[0]
+        
 # [RDO Modification] PIPE-612: Helper functions for pre-export workflow
 def build_export_config_from_instance_data(instance):
     """Build export configuration from stored instance data."""
@@ -174,32 +224,8 @@ def write_textures_to_publish_location_selective(parent=None):
         or "textureSet" in (inst.get("families") or [])
     ]
 
-    if not texture_instances:
-        raise KnownPublishError("No 'textureSet' instances found. Create one first.")
-
-    instance = None
-    if len(texture_instances) == 1:
-        instance = texture_instances[0]
-    else:
-        try:
-            items = [
-                inst.get("productName") or inst.get("label") or inst.get("name") or inst.get("instance_id")
-                for inst in texture_instances
-            ]
-            item, ok = QtWidgets.QInputDialog.getItem(
-                parent or QtWidgets.QApplication.activeWindow(),
-                "Select Texture Set",
-                "Choose the texture set instance to export:",
-                items,
-                0,
-                False,
-            )
-            if ok:
-                instance = texture_instances[items.index(item)]
-            else:
-                raise KnownPublishError("Pre-export cancelled: no instance selected")
-        except Exception:
-            instance = texture_instances[0]
+    # Use shared helper function for dialog selection
+    instance = _select_texture_instance_from_dialog(texture_instances, parent)
 
     all_texture_sets = [ts.name() for ts in substance_painter.textureset.all_texture_sets()]
     all_udims = []
@@ -288,7 +314,9 @@ def write_textures_to_publish_location_selective(parent=None):
         result = substance_painter.export.export_project_textures(config)
     
     if result.status != substance_painter.export.ExportStatus.Success:
-        raise KnownPublishError(f"Texture export failed: {result.message}")
+        error_msg = f"Texture export failed: {result.message}"
+        log.error(error_msg, exc_info=True)
+        raise KnownPublishError(error_msg)
     
     flags = instance.setdefault("ayon_flags", {})
     flags["textures_exported"] = True

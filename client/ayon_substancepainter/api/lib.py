@@ -185,12 +185,12 @@ def _compute_staging_dir_with_anatomy(
     except Exception as exc:
         raise Exception(f"Failed to load anatomy: {exc}")
     
-    work_root = anatomy.roots.get("work")
-    if not work_root:
-        raise Exception(f"No 'work' root configured in {project_name} AYON anatomy.")
+    publish_root = anatomy.roots.get("publish")
+    if not publish_root:
+        raise Exception(f"No 'publish' root configured in {project_name} AYON anatomy.")
     
     staging_dir = os.path.join(
-        work_root,
+        publish_root,
         project_name,
         asset_name,
         task_name,

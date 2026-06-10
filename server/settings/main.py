@@ -3,6 +3,7 @@ from .imageio import ImageIOSettings, DEFAULT_IMAGEIO_SETTINGS
 from .creator_plugins import CreatorsModel, DEFAULT_CREATOR_SETTINGS
 from .load_plugins import LoadersModel, DEFAULT_LOADER_SETTINGS
 from .publish_plugins import PublishersModel, DEFAULT_PUBLISH_SETTINGS
+from .pipe_template import PipeTemplateSettings, DEFAULT_PIPE_TEMPLATE_SETTINGS
 
 
 class ShelvesSettingsModel(BaseSettingsModel):
@@ -15,6 +16,10 @@ class SubstancePainterSettings(BaseSettingsModel):
     imageio: ImageIOSettings = SettingsField(
         default_factory=ImageIOSettings,
         title="Color Management (ImageIO)"
+    )
+    pipe_template: PipeTemplateSettings = SettingsField(
+        default_factory=PipeTemplateSettings,
+        title="Pipe Template"
     )
     shelves: list[ShelvesSettingsModel] = SettingsField(
         default_factory=list,
@@ -30,8 +35,10 @@ class SubstancePainterSettings(BaseSettingsModel):
 
 DEFAULT_SPAINTER_SETTINGS = {
     "imageio": DEFAULT_IMAGEIO_SETTINGS,
+    "pipe_template": DEFAULT_PIPE_TEMPLATE_SETTINGS,
     "shelves": [],
     "create": DEFAULT_CREATOR_SETTINGS,
     "load": DEFAULT_LOADER_SETTINGS,
     "publish": DEFAULT_PUBLISH_SETTINGS,
 }
+

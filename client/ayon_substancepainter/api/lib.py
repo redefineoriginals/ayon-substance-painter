@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import logging
 from collections import defaultdict
 
 import contextlib
@@ -11,6 +12,187 @@ import substance_painter.js
 import substance_painter.export
 
 from qtpy import QtGui, QtWidgets, QtCore
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+#((RDO-240226)rdo-modification
+# Added check_texture_resolution_before_write and supporting helpers.
+# This is Gate 1 of 2 - warns the Artist at Write/Export time if the project
+# texture resolution exceeds the configured limit.
+#
+# Gate 1 behaviour (Write): Always shows a warning dialog. Always allows
+# bypass. The warning message makes clear that the texture cannot be published
+# at this resolution so the Artist proceeds at their own risk.
+#
+# Gate 2 behaviour (Publish): Hard blocks by default. Configured via
+# sanity_check_optional in Ayon project settings.
+# See: plugins/publish/validate_texture_resolution.py
+#
+# Note: The settings read (_get_texture_limit_settings) is intentionally
+# duplicated here rather than imported from validate_texture_resolution to
+# avoid a cyclic import. Both gates read from the same settings path.
+#
+# ayon_core.pipeline and substance_painter.textureset are imported locally
+# inside their respective functions to avoid a startup import error
+# (PLUGINS_MENU not yet available during Substance Painter's init phase).)
+# ---------------------------------------------------------------------------
+
+
+def _get_texture_limit_settings():
+    """Return the texture resolution limit fields from project settings.
+
+    These live under load > SubstanceLoadProjectMesh alongside the project
+    templates, since resolution is configured at project creation time.
+
+    Note:
+        get_current_project_settings is imported locally here to avoid a
+        startup import error caused by PLUGINS_MENU not being available
+        during Substance Painter's plugin initialisation phase.
+
+    Returns:
+        dict: SubstanceLoadProjectMesh settings dict, or empty dict if
+            not found.
+    """
+    try:
+        #((RDO-240226)rdo-modification
+        # Imported locally to avoid a startup import error - ayon_core.pipeline
+        # triggers the PLUGINS_MENU error if imported at module level during
+        # Substance Painter's plugin initialisation phase.)
+        from ayon_core.pipeline import get_current_project_settings
+        project_settings = get_current_project_settings()
+        return (
+            project_settings
+            .get("substancepainter", {})
+            .get("load", {})
+            .get("SubstanceLoadProjectMesh", {})
+        )
+    except TypeError as exc:
+        # project_settings or an intermediate value is None or wrong type
+        log.warning(
+            "Unexpected settings structure (None or wrong type): %s",
+            exc, exc_info=True
+        )
+    except Exception as exc:
+        # Broad catch retained as a last resort - ayon_core may raise
+        # connection or environment errors we cannot predict at import time.
+        log.warning(
+            "Could not read texture limit settings: %s", exc, exc_info=True
+        )
+    return {}
+
+
+def _get_project_export_size_px():
+    """Return the current Substance Painter project's texture resolution in pixels.
+
+    Queries all texture sets in the open project and returns the largest
+    dimension found. Used to determine whether the Artist is working above
+    the configured limit before they spend time baking.
+
+    Note:
+        substance_painter.textureset is imported locally here to avoid a
+        startup import error caused by PLUGINS_MENU not being available
+        during Substance Painter's plugin initialisation phase.
+
+    Returns:
+        int: Largest texture dimension in pixels across all texture sets,
+            or 0 if the resolution cannot be determined or no project is open.
+    """
+    try:
+        import substance_painter.textureset
+        all_sets = substance_painter.textureset.all_texture_sets()
+        sizes = []
+        for ts in all_sets:
+            res = ts.get_resolution()
+            sizes.extend([res.width, res.height])
+        return max(sizes) if sizes else 0
+    except AttributeError as exc:
+        # get_resolution() or .width/.height missing - SP API version mismatch
+        log.warning(
+            "Unexpected SP textureset API response: %s", exc, exc_info=True
+        )
+    except Exception as exc:
+        # SP may raise internal C++ errors as generic exceptions when no
+        # project is open or the API is called before SP is fully initialised.
+        log.debug(
+            "Could not read project texture resolution: %s", exc, exc_info=True
+        )
+    return 0
+
+
+def check_texture_resolution_before_write(parent=None):
+    """Check texture resolution against the project limit before export.
+
+    This is Gate 1 of the two-gate resolution enforcement system. Runs when
+    the Artist triggers a Write/Export from the studio menu, before any baking
+    begins.
+
+    Note:
+        This function is not called within this repo. It is intended as the
+        public API entry point for the studio's Write menu action - a future
+        integration that will live in a separate private repository and import
+        this function from lib.py to trigger Gate 1 before baking begins.
+
+    Gate 1 always shows a warning dialog if the resolution exceeds the limit,
+    but always allows the Artist to bypass and continue. The warning message
+    makes clear that the texture cannot be published at this resolution.
+    It is the Artist's responsibility if they choose to proceed.
+
+    Gate 2 (publish-time) is the hard block. See validate_texture_resolution.py.
+
+    Args:
+        parent: Optional Qt parent widget for the warning dialog.
+
+    Returns:
+        bool: True if the export should proceed, False if the Artist cancelled.
+    """
+    limits = _get_texture_limit_settings()
+    max_res = limits.get("max_publish_texture_resolution", 4096)
+    if max_res == 0:
+        return True
+
+    current_res = _get_project_export_size_px()
+    if current_res == 0 or current_res <= max_res:
+        return True
+
+    sanity_check_optional = limits.get("sanity_check_optional", False)
+
+    # Gate 1 always warns and always allows bypass.
+    # The message differs based on whether the show has an override active.
+    title = "Texture Resolution Limit Exceeded"
+    body = (
+        f"The current texture resolution ({current_res}px) exceeds the "
+        f"project limit of {max_res}px.\n\n"
+    )
+
+    if sanity_check_optional:
+        body += (
+            "This show has a resolution override enabled.\n"
+            "The Publish validator will warn but will not block.\n\n"
+            "Do you want to continue?"
+        )
+    else:
+        body += (
+            "WARNING: You will NOT be able to publish textures at this "
+            "resolution.\n\n"
+            "If you continue, this data cannot be published. You would need "
+            "to down-res the textures (e.g. in Nuke) before publishing.\n\n"
+            "Do you want to continue anyway?"
+        )
+
+    result = QtWidgets.QMessageBox.warning(
+        parent,
+        title,
+        body,
+        QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
+        QtWidgets.QMessageBox.Cancel,
+    )
+    return result == QtWidgets.QMessageBox.Ok
+
+# ---------------------------------------------------------------------------
+# End RDO-240226
+# ---------------------------------------------------------------------------
 
 
 def get_export_presets():
@@ -180,7 +362,7 @@ def get_export_templates(config, format="png", strip_folder=True):
             "$textureSet_Emissive(_$colorSpace)(.$udim)": "DefaultMaterial_Emissive_ACES - ACEScg.1002.png",
             "$textureSet_Height(_$colorSpace)(.$udim)": "DefaultMaterial_Height_Utility - Raw.1002.png",
             "$textureSet_Metallic(_$colorSpace)(.$udim)": "DefaultMaterial_Metallic_Utility - Raw.1002.png",
-            "$textureSet_Normal(_$colorSpace)(.$udim)": "DefaultMaterial_Normal_Utility - Raw.1002.png",    
+            "$textureSet_Normal(_$colorSpace)(.$udim)": "DefaultMaterial_Normal_Utility - Raw.1002.png",
             "$textureSet_Roughness(_$colorSpace)(.$udim)": "DefaultMaterial_Roughness_Utility - Raw.1002.png"
         }
     }
@@ -276,8 +458,8 @@ def _templates_to_regex(templates,
         "$udim": "([0-9]{4})"
     }
 
-    version_info = substance_painter.application.version_info()
-    if version_info >= (11, 0, 0):
+    if tile_name_match:
+        # Added in Substance Painter 11.0.0
         key_matches["$uvTileName"] = tile_name_match
 
     # Turn the templates into regexes
@@ -430,7 +612,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
     #((AR-130525)rdo-modification
     # Fixed issue with get_project_channel_data() returning None.
     # Now safely handles the 'data' key being None to avoid crashing during colorSpace parsing.)
-    
+
     project_colorspaces = set(
         data["colorSpace"]
         for data in get_project_channel_data().values()
@@ -457,6 +639,7 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
     # Parse the outputs
     result = {}
+    version_info = substance_painter.application.version_info()
     for key, filepaths in outputs.items():
         texture_set_name, stack = key
 
@@ -464,7 +647,10 @@ def get_parsed_export_maps(config, strip_texture_set=False):
             substance_painter.textureset.TextureSet.from_name(
                 texture_set_name)
         )
-        tile_names = set(tile.name for tile in texture_set.all_uv_tiles())
+
+        tile_names = set()
+        if version_info >= (11, 0, 0):
+            tile_names = set(tile.name for tile in texture_set.all_uv_tiles())
 
         if stack:
             stack_path = f"{texture_set_name}/{stack}"

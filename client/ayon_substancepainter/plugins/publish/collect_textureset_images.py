@@ -32,12 +32,14 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
             project_name,
             instance.data["folderPath"]
         )
+        instance.data["folderEntity"] = folder_entity
         task_name = instance.data.get("task")
         task_entity = None
         if folder_entity and task_name:
             task_entity = ayon_api.get_task_by_name(
                 project_name, folder_entity["id"], task_name
             )
+            instance.data["taskEntity"] = task_entity
 
         instance.data["exportConfig"] = config
         strip_texture_set = instance.data["creator_attributes"].get(
@@ -51,17 +53,30 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
                 self.log.info(
                     f"Processing {template} with tile name {tilename}"
                 )
-                self.create_image_instance(instance, template, outputs,
-                                           task_entity=task_entity,
-                                           texture_set_name=texture_set_name,
-                                           stack_name=stack_name,
-                                           uv_tile_name=tilename,
-                                           strip_texture_set=strip_texture_set)
+                self.create_image_instance(
+                    instance,
+                    template,
+                    outputs,
+                    folder_entity=folder_entity,
+                    task_entity=task_entity,
+                    texture_set_name=texture_set_name,
+                    stack_name=stack_name,
+                    uv_tile_name=tilename,
+                    strip_texture_set=strip_texture_set
+                )
 
-    def create_image_instance(self, instance, template, outputs,
-                              task_entity, texture_set_name, stack_name,
-                              uv_tile_name="",
-                              strip_texture_set=False):
+    def create_image_instance(
+        self,
+        instance,
+        template,
+        outputs,
+        folder_entity,
+        task_entity,
+        texture_set_name,
+        stack_name,
+        uv_tile_name="",
+        strip_texture_set=False
+    ):
         """Create a new instance per image or UDIM sequence.
 
         The new instances will be of product type `image`.
@@ -73,7 +88,6 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         fnames = [os.path.basename(output["filepath"]) for output in outputs]
         ext = os.path.splitext(first_filepath)[1]
         assert ext.lstrip("."), f"No extension: {ext}"
-
 
         # all_texture_sets = substance_painter.textureset.all_texture_sets()
         # Define the suffix we want to give this particular texture
@@ -96,31 +110,44 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         map_identifier = strip_template(template)
         suffix += f".{map_identifier}"
 
-        task_name = task_type = None
-        if task_entity:
-            task_name = task_entity["name"]
-            task_type = task_entity["taskType"]
+        product_type = instance.data["image_product_type"]
 
         # TODO: The product type actually isn't 'texture' currently but
         #   for now this is only done so the product name starts with
         #   'texture'
+        product_base_type = "texture"
+        image_kwargs = dict(
+            project_name=context.data["projectName"],
+            folder_entity=folder_entity,
+            task_entity=task_entity,
+            product_base_type=product_base_type,
+            product_type=product_type or product_base_type,
+            host_name=context.data["hostName"],
+            project_settings=context.data["project_settings"],
+        )
         image_product_name = get_product_name(
+<<<<<<< HEAD
             project_name=context.data["projectName"],
             task_name=task_name,
             task_type=task_type,
             host_name=context.data["hostName"],
             product_type="texture",
+=======
+>>>>>>> upstream/develop
             variant=instance.data["variant"] + suffix,
-            project_settings=context.data["project_settings"]
+            **image_kwargs
         )
         image_product_group_name = get_product_name(
+<<<<<<< HEAD
             project_name=context.data["projectName"],
             task_name=task_name,
             task_type=task_type,
             host_name=context.data["hostName"],
             product_type="texture",
+=======
+>>>>>>> upstream/develop
             variant=instance.data["variant"],
-            project_settings=context.data["project_settings"]
+            **image_kwargs
         )
 
         # Prepare representation
@@ -143,18 +170,35 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         representation["tags"] = ["review"]
         representation["stagingDir"] = staging_dir
         # Clone the instance
-        product_type = "image"
+        product_base_type = "image"
         image_instance = context.create_instance(image_product_name)
         image_instance[:] = instance[:]
         image_instance.data.update(copy.deepcopy(dict(instance.data)))
         image_instance.data["name"] = image_product_name
         image_instance.data["label"] = image_product_name
         image_instance.data["productName"] = image_product_name
-        image_instance.data["productType"] = product_type
-        image_instance.data["family"] = product_type
-        image_instance.data["families"] = [product_type, "textures"]
+        # TODO how to get product type for image instance?
+        image_instance.data["productType"] = product_type or product_base_type
+        image_instance.data["productBaseType"] = product_base_type
+        image_instance.data["family"] = product_base_type
+        image_instance.data["families"] = [product_base_type, "textures"]
         if instance.data["creator_attributes"].get("review"):
             image_instance.data["families"].append("review")
+
+            entity: dict = instance.data.get("taskEntity")
+            if not entity:
+                entity = instance.data["folderEntity"]
+
+            fps: float = entity["attrib"]["fps"]
+            image_instance.data["fps"] = fps
+            if bool(outputs[0].get("udim")):
+                udim = sorted(int(output["udim"]) for output in outputs)
+                image_instance.data["frameStart"] = udim[0]
+                image_instance.data["frameEnd"] = udim[-1]
+            else:
+                # Use start of UDIM range as fallback frame for single images
+                image_instance.data["frameStart"] = 1001
+                image_instance.data["frameEnd"] = 1001
 
         image_instance.data["representations"] = [representation]
 

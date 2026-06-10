@@ -15,22 +15,19 @@ class CreateWorkfile(AutoCreator):
     """Workfile auto-creator."""
     identifier = "io.openpype.creators.substancepainter.workfile"
     label = "Workfile"
-    product_type = "workfile"
+    product_base_type = "workfile"
+    product_type = product_base_type
     icon = "document"
 
     default_variant = "Main"
     settings_category = "substancepainter"
+    active_on_create = True
 
     def create(self):
-
         if not substance_painter.project.is_open():
             return
 
         variant = self.default_variant
-        project_name = self.project_name
-        folder_path = self.create_context.get_current_folder_path()
-        task_name = self.create_context.get_current_task_name()
-        host_name = self.create_context.host_name
 
         # Workfile instance should always exist and must only exist once.
         # As such we'll first check if it already exists and is collected.
@@ -66,8 +63,8 @@ class CreateWorkfile(AutoCreator):
             data = {
                 "folderPath": folder_path,
                 "task": task_name,
-                "variant": variant
             }
+
             current_instance = self.create_instance_in_context(product_name,
                                                                data)
         elif (
@@ -87,6 +84,9 @@ class CreateWorkfile(AutoCreator):
             current_instance["task"] = task_name
             current_instance["productName"] = product_name
 
+        current_instance["active"] = self.active_on_create
+        current_instance["variant"] = variant
+
         set_instance(
             instance_id=current_instance.get("instance_id"),
             instance_data=current_instance.data_to_store()
@@ -94,8 +94,13 @@ class CreateWorkfile(AutoCreator):
 
     def collect_instances(self):
         for instance in get_instances():
-            if (instance.get("creator_identifier") == self.identifier or
-                    instance.get("productType") == self.product_type):
+            product_base_type = instance.get("productBaseType")
+            if not product_base_type:
+                product_base_type = instance.get("productType")
+            if (
+                instance.get("creator_identifier") == self.identifier
+                or product_base_type == self.product_base_type
+            ):
                 self.create_instance_in_context_from_existing(instance)
 
     def update_instances(self, update_list):
@@ -104,13 +109,20 @@ class CreateWorkfile(AutoCreator):
             # Persist the data
             instance_id = instance.get("instance_id")
             instance_data = instance.data_to_store()
+            instance_data["active"] = instance.get(
+                "active", self.active_on_create
+            )
             instance_data_by_id[instance_id] = instance_data
         set_instances(instance_data_by_id, update=True)
 
     # Helper methods (this might get moved into Creator class)
     def create_instance_in_context(self, product_name, data):
         instance = CreatedInstance(
-            self.product_type, product_name, data, self
+            product_base_type=self.product_base_type,
+            product_type=self.product_type,
+            product_name=product_name,
+            data=data,
+            creator=self
         )
         self.create_context.creator_adds_instance(instance)
         return instance

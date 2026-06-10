@@ -142,8 +142,10 @@ class SubstanceProjectConfigurationWindow(QtWidgets.QDialog):
 class SubstanceLoadProjectMesh(load.LoaderPlugin):
     """Load mesh for project"""
 
-    product_types = {"*"}
-    representations = {"abc", "fbx", "obj", "gltf", "usd", "usda", "usdc"}
+    product_base_types = {"*"}
+    product_types = product_base_types
+    representations = {"*"}
+    extensions = {"abc", "fbx", "obj", "gltf", "usd", "usda", "usdc"}
 
     label = "Load mesh"
     order = -10

@@ -614,9 +614,9 @@ def get_parsed_export_maps(config, strip_texture_set=False):
     # Now safely handles the 'data' key being None to avoid crashing during colorSpace parsing.)
 
     project_colorspaces = set(
-        data["colorSpace"]
-        for data in get_project_channel_data().values()
-        if data and "colorSpace" in data
+        colorspace
+        for colorspace in get_project_channel_data().values()
+        if colorspace
     )
 
     # Get all color spaces set for the current project
@@ -715,9 +715,14 @@ def get_stack_results(stack_results, template_regex,
             break
     else:
         if not strip_texture_set:
-            # Raise an error if no match is found
-            raise ValueError(f"Unable to match {filename} against any "
-                             f"template in: {list(template_regex.keys())}")
+            patterns = {
+                template: regex.pattern
+                for template, regex in template_regex.items()
+            }
+            raise ValueError(
+                f"Unable to match {filename!r} against any template. "
+                f"Tried patterns: {patterns}"
+            )
     return stack_results
 
 
@@ -1014,3 +1019,22 @@ def set_layer_stack_opacity(node_ids, channel_types):
         for node in excluded_nodes:
             for channel, opacity in original_opacity_values:
                 node.set_opacity(opacity, channel)
+
+#((PIPE-508)rdo-modification
+def get_review_screenshot_paths(creator_attributes):
+    """Resolve FileDef screenshot entries to absolute filepaths.
+
+    Args:
+        creator_attributes (dict): Review instance creator attributes,
+            holding the raw 'screenshots' FileDef value.
+
+    Returns:
+        list[str]: Ordered list of absolute screenshot filepaths.
+    """
+    paths = []
+    for item in creator_attributes.get("screenshots") or []:
+        directory = item.get("directory") or ""
+        for filename in item.get("filenames") or []:
+            paths.append(os.path.join(directory, filename))
+    return paths
+#((PIPE-508)rdo-modification-end

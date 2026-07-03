@@ -153,8 +153,6 @@ class CollectTextureSet(pyblish.api.InstancePlugin):
         image_instance.data["productType"] = product_type
         image_instance.data["family"] = product_type
         image_instance.data["families"] = [product_type, "textures"]
-        if instance.data["creator_attributes"].get("review"):
-            image_instance.data["families"].append("review")
 
         image_instance.data["representations"] = [representation]
 

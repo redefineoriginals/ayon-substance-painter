@@ -36,13 +36,7 @@ from ayon_substancepainter import SUBSTANCE_HOST_DIR
 from . import lib
  
 # Import lib functions used in pre-export workflow
-from .lib import (
-    build_export_config_from_instance_data,
-    _resolve_publish_texture_staging_dir,
-    _select_texture_instance_from_dialog,
-    write_textures_to_publish_location_selective,
-    set_layer_stack_opacity,
-)
+from .lib import write_textures_to_publish_location_selective
 
 PLUGINS_DIR = os.path.join(SUBSTANCE_HOST_DIR, "plugins")
 PUBLISH_PATH = os.path.join(PLUGINS_DIR, "publish")
@@ -55,93 +49,6 @@ OPENPYPE_METADATA_CONTAINERS_KEY = "containers"  # child key
 OPENPYPE_METADATA_CONTEXT_KEY = "context"        # child key
 OPENPYPE_METADATA_INSTANCES_KEY = "instances"    # child key
 
-#[RDO Modification] PIPE-612: Pre-export workflow function
-def write_textures_to_publish_location(parent=None) -> str:
-    """Export textures for a textureSet instance to its publish location.
- 
-    Runs outside of the Pyblish publish loop to avoid holding database
-    connections open. Writes textures into the final publish staging
-    directory and sets a flag on the instance so the publish extractor
-    can skip exporting again.
-    
-    Args:
-        parent (QtWidgets.QWidget, optional): Parent widget for dialogs
-        
-    Returns:
-        str: Path to the published texture directory
-        
-    Raises:
-        KnownPublishError: If no project open, no instances found, or export fails
-    """
-    # Ensure a project is open.
-    if not substance_painter.project.is_open():
-        raise KnownPublishError("No Substance Painter project is open.")
- 
-    # Retrieve stored instances and find textureSet instances.
-    instances_by_id = get_instances_by_id()
-    texture_instances = [
-        inst
-        for inst in instances_by_id.values()
-        if inst.get("productType") == "textureSet"
-        or inst.get("family") == "textureSet"
-        or "textureSet" in (inst.get("families") or [])
-    ]
- 
-    if not texture_instances:
-        raise KnownPublishError("No 'textureSet' instances found. Create one first.")
- 
-    # Use shared helper function for dialog selection
-    instance = _select_texture_instance_from_dialog(texture_instances, parent)
- 
-    # Build export configuration from the instance data.
-    config = build_export_config_from_instance_data(instance)
- 
-    # Determine export path and ensure the directory exists.
-    publish_dir = _resolve_publish_texture_staging_dir(instance)
-    if os.path.exists(publish_dir):
-        base_dir = os.path.dirname(publish_dir)
-        current_name = os.path.basename(publish_dir)
-        # Only version up if the folder name is a purely numeric string (e.g., "001", "002")
-        if current_name.isdigit():
-            # Gather all existing numeric version directories (e.g., "001", "002", "003")
-            versions = []
-            for name in os.listdir(base_dir):
-                if name.isdigit():
-                    try:
-                        versions.append(int(name))
-                    except ValueError:
-                        pass
-            # Calculate next version: if "001" exists, next is "002"
-            next_version = (max(versions) + 1) if versions else 1
-            new_dir_name = f"{next_version:03d}"  # Formats as "001", "002", "003"...
-            publish_dir = os.path.join(base_dir, new_dir_name)
-    
-    # Create the final export directory
-    os.makedirs(publish_dir, exist_ok=True)
-    config["exportPath"] = publish_dir
- 
-    # Determine channels and layer IDs for export.
-    export_channel = instance.get("creator_attributes", {}).get("exportChannel", [])
-    node_ids = instance.get("selected_node_id", [])
- 
-    # Perform the export with the correct layer visibility.
-    with set_layer_stack_opacity(node_ids, export_channel):
-        result = substance_painter.export.export_project_textures(config)
- 
-    if result.status != substance_painter.export.ExportStatus.Success:
-        error_msg = f"Texture export failed: {result.message}"
-        log.error(error_msg, exc_info=True)
-        raise KnownPublishError(error_msg)
- 
-    # Mark instance so publish extractor knows textures are already exported.
-    flags = instance.setdefault("ayon_flags", {})
-    flags["textures_exported"] = True
- 
-    # Persist the updated instance data back into metadata.
-    instance["stagingDir"] = publish_dir
-    instance["publishDir"] = publish_dir
-    set_instance(instance["instance_id"], instance, update=True)
-    return publish_dir
 
 class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
     name = "substancepainter"
@@ -358,7 +265,7 @@ class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
                     "Check the console log for more details."
                 )
 
-        export_action = menu.addAction("Pre‑Export Textures")
+        export_action = menu.addAction("Pre-Export Textures")
         export_action.triggered.connect(_pre_export_textures)
 
         substance_painter.ui.add_menu(menu)
@@ -582,5 +489,3 @@ def get_instances_by_id():
 def get_instances():
     """Return all instances stored in the project instances as a list"""
     return list(get_instances_by_id().values())
-
-

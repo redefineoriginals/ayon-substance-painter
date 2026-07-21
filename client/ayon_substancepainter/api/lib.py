@@ -20,7 +20,9 @@ from ayon_core.pipeline import Anatomy
 
 log = logging.getLogger(__name__)
 
-# [RDO Modification] PIPE-612: Helper function for dialog selection
+#((PIPE-612)rdo-modification
+# Pre-export workflow: write textures to their publish location outside
+# the Pyblish publish loop, then let publish skip re-exporting them.
 def _select_texture_instance_from_dialog(texture_instances, parent=None):
     """Select a texture instance from user dialog.
     
@@ -71,14 +73,25 @@ def _select_texture_instance_from_dialog(texture_instances, parent=None):
         )
         return texture_instances[0]
         
-# [RDO Modification] PIPE-612: Helper functions for pre-export workflow
 def build_export_config_from_instance_data(instance):
-    """Build export configuration from stored instance data."""
+    """Build export configuration from stored instance data.
+
+    Uses the same preset as CollectTextureSet.get_export_config() so
+    pre-exported filenames match the representations.
+    """
     creator_attrs = instance.get("creator_attributes") or {}
-    
-    # [RDO Modification] Use reliable gltf preset, ignore invalid custom presets
-    preset_url = "export-preset-generator://gltf"
-    
+
+    preset_url = creator_attrs.get("exportPresetUrl")
+    if not preset_url:
+        # Legacy instance predates exportPresetUrl being stored.
+        log.warning(
+            "No exportPresetUrl on instance %s, falling back to gltf",
+            instance.get("instance_id")
+        )
+        preset_url = "export-preset-generator://gltf"
+
+    is_single_output = creator_attrs.get("flattenTextureSets", False)
+
     config = {
         "exportShaderParams": True,
         # exportPath will be set by caller after validation
@@ -103,10 +116,14 @@ def build_export_config_from_instance_data(instance):
         if params[key] is None:
             params.pop(key)
 
+    # Match CollectTextureSet's preset/map filtering.
+    channel_layer = creator_attrs.get("exportChannel", [])
+    maps = get_filtered_export_preset(preset_url, channel_layer, is_single_output)
+    config.update(maps)
+
     return config
 
 
-# [RDO Modification] PIPE-612: Staging directory resolution helpers
 def _resolve_publish_texture_staging_dir(instance: dict) -> str:
     """Resolve staging directory from instance or compute from anatomy.
     
@@ -135,7 +152,6 @@ def _resolve_publish_texture_staging_dir(instance: dict) -> str:
     
     return staging_dir
 
-# [RDO Modification] PIPE-612: Compute default staging directory
 def _compute_default_staging_dir(instance: dict) -> str:
     """Compute a default staging directory."""
     project_name = instance.get("projectName")
@@ -170,7 +186,6 @@ def _compute_default_staging_dir(instance: dict) -> str:
     return staging_dir
 
 
-# [RDO Modification] PIPE-612: Use AYON anatomy for staging directory
 def _compute_staging_dir_with_anatomy(
     project_name: str,
     asset_name: str,
@@ -202,7 +217,6 @@ def _compute_staging_dir_with_anatomy(
     os.makedirs(staging_dir, exist_ok=True)
     return staging_dir
 
-# [RDO Modification] PIPE-612: New function for selective pre-export
 def write_textures_to_publish_location_selective(parent=None):
     """Export textures with selective material and UDIM options.
     
@@ -330,7 +344,7 @@ def write_textures_to_publish_location_selective(parent=None):
     
     log.info(f"Textures exported to: {publish_dir}")
     return publish_dir
-log = logging.getLogger(__name__)
+#((PIPE-612)rdo-modification-end)
 
 
 # ---------------------------------------------------------------------------
@@ -1332,4 +1346,3 @@ def set_layer_stack_opacity(node_ids, channel_types):
         for node in excluded_nodes:
             for channel, opacity in original_opacity_values:
                 node.set_opacity(opacity, channel)
-

@@ -22,7 +22,7 @@ class ValidatePreExportedTextures(pyblish.api.InstancePlugin):
     ``textures_exported`` flag set on its ``ayon_flags`` or ``flags``.
     """
     
-    label = "Validate Pre‑Exported Textures"
+    label = "Validate Pre-Exported Textures"
     order = pyblish.api.ValidatorOrder + 0.1
     hosts = ["substancepainter"]
     families = ["textureSet"]
@@ -108,8 +108,8 @@ class ValidatePreExportedTextures(pyblish.api.InstancePlugin):
         # Report all missing files at once
         if error_report_missing:
             message = (
-                "Some pre‑exported textures are missing in the publish staging directory. "
-                "Disable 'Allow Skipped Output Maps' or re‑export the textures before publishing.\n"
+                "Some pre-exported textures are missing in the publish staging directory. "
+                "Disable 'Allow Skipped Output Maps' or re-export the textures before publishing.\n"
             )
             for inst, missing in error_report_missing:
                 missing_str = ", ".join(missing)

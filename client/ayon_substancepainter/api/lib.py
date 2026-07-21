@@ -1,7 +1,6 @@
 import os
 import re
 import json
-import tempfile
 import logging
 from collections import defaultdict
 
@@ -16,7 +15,6 @@ import substance_painter.textureset
 from qtpy import QtGui, QtWidgets, QtCore
 
 from ayon_core.pipeline import KnownPublishError
-from ayon_core.pipeline import Anatomy
 
 log = logging.getLogger(__name__)
 
@@ -152,70 +150,6 @@ def _resolve_publish_texture_staging_dir(instance: dict) -> str:
     
     return staging_dir
 
-def _compute_default_staging_dir(instance: dict) -> str:
-    """Compute a default staging directory."""
-    project_name = instance.get("projectName")
-    asset_name = instance.get("assetName") or instance.get("asset")
-    task_name = instance.get("taskName") or instance.get("task")
-    
-    if all([project_name, asset_name, task_name]):
-        try:
-            return _compute_staging_dir_with_anatomy(
-                project_name, asset_name, task_name, instance
-            )
-        except Exception as exc:
-            log.warning(f"Failed to compute staging dir with anatomy: {exc}")
-    
-    if project_name and asset_name:
-        temp_base = tempfile.gettempdir()
-        # Texture set exports are versioned: 001, 002, 003...
-        # Start with 001 for first export (will increment if re-exported)
-        texture_version = "001"
-        staging_dir = os.path.join(
-            temp_base,
-            "ayon_texture_export",
-            project_name,
-            asset_name,
-            "textureSet",
-            texture_version
-        )
-    else:
-        staging_dir = tempfile.mkdtemp(prefix="ayon_texture_")
-    
-    os.makedirs(staging_dir, exist_ok=True)
-    return staging_dir
-
-
-def _compute_staging_dir_with_anatomy(
-    project_name: str,
-    asset_name: str,
-    task_name: str,
-    instance: dict
-) -> str:
-    """Compute staging directory using AYON anatomy."""
-    from ayon_core.pipeline import Anatomy
-    
-    try:
-        anatomy = Anatomy(project_name)
-    except Exception as exc:
-        raise Exception(f"Failed to load anatomy: {exc}")
-    
-    publish_root = anatomy.roots.get("publish")
-    if not publish_root:
-        raise Exception(f"No 'publish' root configured in {project_name} AYON anatomy.")
-    
-    staging_dir = os.path.join(
-        publish_root,
-        project_name,
-        asset_name,
-        task_name,
-        "publish",
-        "textureSet",
-        "001"
-    )
-    
-    os.makedirs(staging_dir, exist_ok=True)
-    return staging_dir
 
 def write_textures_to_publish_location_selective(parent=None):
     """Export textures with selective material and UDIM options.

@@ -11,6 +11,7 @@ More information see:
 import substance_painter.export
 import substance_painter.js
 import json
+import os
 
 from .lib import (
     get_document_structure,
@@ -102,13 +103,43 @@ def get_project_channel_data():
     }
 
     def _get_query_output(config):
-        # Return the basename of the single output path we defined
         result = substance_painter.export.list_project_textures(config)
-        path = next(iter(result.values()))[0]
-        # strip extension and slash since we know relevant json data starts
-        # and ends with { and } characters
-        path = path.strip("/\\.exr")
-        return json.loads(path)
+        if not result:
+            raise RuntimeError(
+                "Substance Painter export query returned no results. "
+                f"Config was: exportList={repr(config.get('exportList'))}, "
+                f"channels={repr(config['exportPresets'][0]['maps'][0].get('channels'))}"
+            )
+
+        first_value = next(iter(result.values()), None)
+        if not first_value:
+            raise RuntimeError(
+                "Substance Painter export query returned an empty path list. "
+                f"Raw result: {repr(result)}"
+            )
+
+        path = first_value[0]
+        print(f"DEBUG path: {repr(path)}")
+
+        if not path or not str(path).strip():
+            raise RuntimeError(
+                f"Empty output path from Substance Painter export query. Raw result: {repr(result)}"
+            )
+
+        normalized_path = str(path).replace("\\", "/").rstrip("/")
+        filename = normalized_path.split("/")[-1]
+
+        print(f"DEBUG normalized_path: {repr(normalized_path)}")
+        print(f"DEBUG filename: {repr(filename)}")
+
+        stem = os.path.splitext(filename)[0].strip()
+
+        print(f"DEBUG stem: {repr(stem)}")
+
+        if not stem:
+            raise RuntimeError(
+                f"Empty filename stem from Substance Painter export query. Path was: {repr(path)}"
+            )
 
     # Query for each type of channel (color and data)
     color_channel, data_channel = _get_first_color_and_data_stack_and_channel()

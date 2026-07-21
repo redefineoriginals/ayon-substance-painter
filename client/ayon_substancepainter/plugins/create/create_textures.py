@@ -14,7 +14,11 @@ from ayon_substancepainter.api.pipeline import (
     set_instances,
     remove_instance
 )
-from ayon_substancepainter.api.lib import get_export_presets
+# (USER-735)rdo-modification
+from ayon_substancepainter.api.lib import (
+    get_export_presets,
+    get_pipe_export_preset_url, 
+)
 
 import substance_painter
 import substance_painter.project
@@ -179,6 +183,8 @@ class CreateTextures(Creator):
                             "all channels"),
             EnumDef("exportPresetUrl",
                     items=get_export_presets(),
+                    # (USER-735)rdo-modification
+                    default=get_pipe_export_preset_url() or None,  
                     label="Output Template"),
             BoolDef("allowSkippedMaps",
                     label="Allow Skipped Output Maps",
@@ -273,3 +279,4 @@ class CreateTextures(Creator):
                         tooltip="Select Layer Stack(s) for exporting")
             )
         return attr_defs + self.get_instance_attr_defs()
+    

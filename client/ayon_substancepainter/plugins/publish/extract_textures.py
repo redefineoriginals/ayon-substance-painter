@@ -106,4 +106,3 @@ class ExtractTextures(publish.Extractor,
                 )
                 instance.remove(image_instance)
                 context.remove(image_instance)
-        #((RDO-NEW)rdo-modification-end

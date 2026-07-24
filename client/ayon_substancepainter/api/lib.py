@@ -1014,6 +1014,7 @@ def set_layer_stack_opacity(node_ids, channel_types):
         for node in excluded_nodes:
             for channel, _ in original_opacity_values:
                 node.set_opacity(0.0, channel)
+                
         yield
     finally:
         for node in excluded_nodes:
@@ -1038,3 +1039,4 @@ def get_review_screenshot_paths(creator_attributes):
             paths.append(os.path.join(directory, filename))
     return paths
 #((PIPE-508)rdo-modification-end
+

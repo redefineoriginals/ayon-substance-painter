@@ -1013,8 +1013,7 @@ def set_layer_stack_opacity(node_ids, channel_types):
     try:
         for node in excluded_nodes:
             for channel, _ in original_opacity_values:
-                node.set_opacity(0.0, channel)
-                
+                node.set_opacity(0.0, channel)    
         yield
     finally:
         for node in excluded_nodes:

@@ -49,6 +49,10 @@ OPENPYPE_METADATA_CONTAINERS_KEY = "containers"  # child key
 OPENPYPE_METADATA_CONTEXT_KEY = "context"        # child key
 OPENPYPE_METADATA_INSTANCES_KEY = "instances"    # child key
 
+import logging
+
+log = logging.getLogger(__name__)
+
 
 class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
     name = "substancepainter"

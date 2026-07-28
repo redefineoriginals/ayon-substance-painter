@@ -36,13 +36,11 @@ class ValidatePreExportedTextures(pyblish.api.InstancePlugin):
         # Get export info (for logging)
         exported_materials = flags.get("exported_materials")
         exported_udims = flags.get("exported_udims")
-        export_strategy = flags.get("export_strategy", "unknown")
         
         self.log.info(
             f"Validating pre-exported textures: "
             f"materials={exported_materials}, "
-            f"udims={exported_udims}, "
-            f"strategy={export_strategy}"
+            f"udims={exported_udims}"
         )
 
         creator_attrs = instance.data.get("creator_attributes", {})

@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict
 
 import contextlib
+import pyblish.util
 import substance_painter
 import substance_painter.project
 import substance_painter.resource
@@ -155,22 +156,31 @@ def write_textures_to_publish_location_selective(parent=None):
     """Export textures with selective material and UDIM options.
     
     Runs outside publish loop. Allows artist to choose which materials
-    and UDIMs to export, and whether to create new version or overwrite.
+    and UDIMs to export. If this instance was already pre-exported,
+    confirms with the artist before overwriting.
     """
     from .pipeline import get_instances_by_id, set_instance
-    from .pre_export_dialog import PreExportDialog, ExportStrategyDialog
+    from .pre_export_dialog import PreExportDialog, ConfirmOverwriteDialog
     
     if not substance_painter.project.is_open():
         raise KnownPublishError("No Substance Painter project is open.")
 
     instances_by_id = get_instances_by_id()
-    texture_instances = [
+    all_texture_instances = [
         inst
         for inst in instances_by_id.values()
         if inst.get("productType") == "textureSet"
         or inst.get("family") == "textureSet"
         or "textureSet" in (inst.get("families") or [])
     ]
+    texture_instances = [
+        inst for inst in all_texture_instances if inst.get("active", True)
+    ]
+    if all_texture_instances and not texture_instances:
+        raise KnownPublishError(
+            "All 'textureSet' instances are disabled. "
+            "Enable one in the Publisher to pre-export it."
+        )
 
     # Use shared helper function for dialog selection
     instance = _select_texture_instance_from_dialog(texture_instances, parent)
@@ -195,63 +205,43 @@ def write_textures_to_publish_location_selective(parent=None):
     
     selected_materials = dialog.get_selected_materials()
     selected_udims = dialog.get_selected_udims()
-    export_strategy = dialog.get_strategy()
     
-    log.info(f"Exporting {len(selected_materials)} materials with strategy: {export_strategy}")
+    log.info(f"Exporting {len(selected_materials)} materials")
     
-    config = build_export_config_from_instance_data(instance)
-    
+    # Run a real collection pass so stagingDir/exportConfig match exactly
+    # what a normal publish would compute, instead of guessing at anatomy
+    # paths ourselves.
+    pyblish_context = pyblish.util.collect()
+    pyblish_instance = next(
+        (
+            inst for inst in pyblish_context
+            if inst.data.get("instance_id") == instance["instance_id"]
+        ),
+        None
+    )
+    if pyblish_instance is None:
+        raise KnownPublishError(
+            f"Could not find instance "
+            f"'{instance.get('productName', instance['instance_id'])}' "
+            "after collection. Check the instance is enabled for publishing."
+        )
+
+    config = pyblish_instance.data.get("exportConfig")
+    if not config:
+        # Collector didn't build one for this instance - derive it
+        # ourselves as a fallback.
+        config = build_export_config_from_instance_data(instance)
+
     if selected_materials:
         config["exportList"] = [{"rootPath": name} for name in selected_materials]
     
-    publish_dir = _resolve_publish_texture_staging_dir(instance)
-    
-    # Handle versioning
-    if export_strategy == "version":
-        if os.path.exists(publish_dir):
-            base_dir = os.path.dirname(publish_dir)
-            current_name = os.path.basename(publish_dir)
-            
-            if current_name.isdigit():
-                versions = []
-                for name in os.listdir(base_dir):
-                    if name.isdigit():
-                        try:
-                            versions.append(int(name))
-                        except ValueError:
-                            pass
-                next_version = (max(versions) + 1) if versions else 1
-                new_dir_name = f"{next_version:03d}"
-                publish_dir = os.path.join(base_dir, new_dir_name)
-    
-    elif export_strategy == "overwrite":
-        if os.path.exists(publish_dir):
-            base_dir = os.path.dirname(publish_dir)
-            current_name = os.path.basename(publish_dir)
-            
-            if current_name.isdigit():
-                versions = []
-                for name in os.listdir(base_dir):
-                    if name.isdigit():
-                        try:
-                            versions.append(int(name))
-                        except ValueError:
-                            pass
-                next_version = (max(versions) + 1) if versions else 1
-                new_dir_name = f"{next_version:03d}"
-                
-                strategy_dialog = ExportStrategyDialog(
-                    current_name,
-                    new_dir_name,
-                    parent=parent
-                )
-                
-                if strategy_dialog.exec_() != QtWidgets.QDialog.Accepted:
-                    raise KnownPublishError("Pre-export cancelled by user")
-                
-                if strategy_dialog.get_choice() == "version":
-                    publish_dir = os.path.join(base_dir, new_dir_name)
-    
+    publish_dir = _resolve_publish_texture_staging_dir(pyblish_instance.data)
+
+    if os.path.isdir(publish_dir) and os.listdir(publish_dir):
+        confirm_dialog = ConfirmOverwriteDialog(parent=parent)
+        if confirm_dialog.exec_() != QtWidgets.QDialog.Accepted:
+            raise KnownPublishError("Pre-export cancelled by user")
+
     os.makedirs(publish_dir, exist_ok=True)
     config["exportPath"] = publish_dir
     
@@ -270,7 +260,6 @@ def write_textures_to_publish_location_selective(parent=None):
     flags["textures_exported"] = True
     flags["exported_materials"] = selected_materials
     flags["exported_udims"] = selected_udims
-    flags["export_strategy"] = export_strategy
     
     instance["stagingDir"] = publish_dir
     instance["publishDir"] = publish_dir

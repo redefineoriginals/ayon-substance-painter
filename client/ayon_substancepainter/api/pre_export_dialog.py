@@ -1,5 +1,5 @@
 """
-Pre-export dialog for selective material and UDIM export with strategy selection.
+Pre-export dialog for selective material and UDIM export.
 """
 
 from qtpy import QtWidgets, QtCore, QtGui
@@ -9,7 +9,7 @@ log = logging.getLogger(__name__)
 
 
 class PreExportDialog(QtWidgets.QDialog):
-    """Dialog for selecting materials, UDIMs, and export strategy."""
+    """Dialog for selecting materials and UDIMs to pre-export."""
     
     def __init__(self, texture_sets, udim_tiles=None, parent=None):
         """
@@ -25,7 +25,6 @@ class PreExportDialog(QtWidgets.QDialog):
         self.udim_tiles = udim_tiles or []
         self.selected_materials = []
         self.selected_udims = []
-        self.strategy = "version"  # "version" or "overwrite"
         
         self.setWindowTitle("Pre-Export Textures")
         self.setMinimumWidth(500)
@@ -45,10 +44,6 @@ class PreExportDialog(QtWidgets.QDialog):
         if self.udim_tiles:
             udim_group = self._create_udim_group()
             layout.addWidget(udim_group)
-        
-        # === Strategy Selection ===
-        strategy_group = self._create_strategy_group()
-        layout.addWidget(strategy_group)
         
         # === Buttons ===
         button_layout = QtWidgets.QHBoxLayout()
@@ -165,64 +160,6 @@ class PreExportDialog(QtWidgets.QDialog):
         group.setLayout(layout)
         return group
     
-    def _create_strategy_group(self):
-        """Create export strategy selection group."""
-        group = QtWidgets.QGroupBox("Export Strategy")
-        layout = QtWidgets.QVBoxLayout()
-        
-        self.strategy_buttons = {}
-        
-        # Version Strategy (default)
-        version_radio = QtWidgets.QRadioButton(
-            "Create New Version (v001, v002, v003, ...)"
-        )
-        version_radio.setChecked(True)
-        version_radio.toggled.connect(lambda: self._on_strategy_changed("version"))
-        self.strategy_buttons["version"] = version_radio
-        
-        version_info = QtWidgets.QLabel(
-            "Each export creates a new version directory. Safe, never overwrites."
-        )
-        version_info.setStyleSheet("color: gray; font-size: 10px; margin-left: 20px;")
-        
-        layout.addWidget(version_radio)
-        layout.addWidget(version_info)
-        layout.addSpacing(10)
-        
-        # Overwrite Strategy
-        overwrite_radio = QtWidgets.QRadioButton(
-            "Overwrite Current Version (Merge mode)"
-        )
-        overwrite_radio.toggled.connect(lambda: self._on_strategy_changed("overwrite"))
-        self.strategy_buttons["overwrite"] = overwrite_radio
-        
-        overwrite_info = QtWidgets.QLabel(
-            "Overwrites files in current version. Only selected materials/UDIMs are updated."
-        )
-        overwrite_info.setStyleSheet("color: gray; font-size: 10px; margin-left: 20px;")
-        
-        layout.addWidget(overwrite_radio)
-        layout.addWidget(overwrite_info)
-        layout.addSpacing(10)
-        
-        # Warning
-        warning = QtWidgets.QLabel(
-            " Overwrite mode will replace files in the current version. "
-            "Use caution!"
-        )
-        warning.setStyleSheet("color: orange; font-size: 10px;")
-        warning.setWordWrap(True)
-        layout.addWidget(warning)
-        
-        layout.addStretch()
-        
-        group.setLayout(layout)
-        return group
-    
-    def _on_strategy_changed(self, strategy):
-        """Handle strategy radio button change."""
-        self.strategy = strategy
-    
     def get_selected_materials(self):
         """Return list of selected material names."""
         selected = []
@@ -242,10 +179,6 @@ class PreExportDialog(QtWidgets.QDialog):
                 selected.append(udim)
         return selected  # Empty = export all UDIMs
     
-    def get_strategy(self):
-        """Return selected strategy: 'version' or 'overwrite'."""
-        return self.strategy
-    
     def accept(self):
         """Override accept to validate selection."""
         self.selected_materials = self.get_selected_materials()
@@ -262,24 +195,14 @@ class PreExportDialog(QtWidgets.QDialog):
         super().accept()
 
 
-class ExportStrategyDialog(QtWidgets.QDialog):
-    """Simple dialog to confirm overwrite strategy if version already exists."""
+class ConfirmOverwriteDialog(QtWidgets.QDialog):
+    """Plain confirmation dialog shown when a previous pre-export already
+    wrote textures to this instance's staging directory."""
     
-    def __init__(self, current_version, proposed_version, parent=None):
-        """
-        Initialize the strategy confirmation dialog.
-        
-        Args:
-            current_version (str): Current version path (e.g., "v001")
-            proposed_version (str): Next version that would be created (e.g., "v002")
-            parent: Parent widget
-        """
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.current_version = current_version
-        self.proposed_version = proposed_version
-        self.choice = None
         
-        self.setWindowTitle("Version Already Exists")
+        self.setWindowTitle("Textures Already Exported")
         self.setMinimumWidth(400)
         
         self._setup_ui()
@@ -288,50 +211,18 @@ class ExportStrategyDialog(QtWidgets.QDialog):
         """Build the dialog UI."""
         layout = QtWidgets.QVBoxLayout()
         
-        # Message
         message = QtWidgets.QLabel(
-            f"Version '{self.current_version}' already exists.\n\n"
-            "What would you like to do?"
+            "This instance was already pre-exported.\n\n"
+            "Exporting again will overwrite the existing texture files. "
+            "Continue?"
         )
+        message.setWordWrap(True)
         layout.addWidget(message)
         layout.addSpacing(10)
         
-        # Option 1: Overwrite
-        option1 = QtWidgets.QRadioButton(
-            f"Overwrite '{self.current_version}' (Merge selected materials/UDIMs)"
-        )
-        option1.setChecked(True)
-        self.choice = "overwrite"
-        option1.toggled.connect(lambda: self._set_choice("overwrite") if option1.isChecked() else None)
-        
-        option1_info = QtWidgets.QLabel(
-            "Only selected materials/UDIMs will be updated. Others remain unchanged."
-        )
-        option1_info.setStyleSheet("color: gray; font-size: 10px; margin-left: 20px;")
-        
-        layout.addWidget(option1)
-        layout.addWidget(option1_info)
-        layout.addSpacing(10)
-        
-        # Option 2: Create new version
-        option2 = QtWidgets.QRadioButton(
-            f"Create new version '{self.proposed_version}'"
-        )
-        option2.toggled.connect(lambda: self._set_choice("version") if option2.isChecked() else None)
-        
-        option2_info = QtWidgets.QLabel(
-            "Safe option. Creates a new version without affecting existing files."
-        )
-        option2_info.setStyleSheet("color: gray; font-size: 10px; margin-left: 20px;")
-        
-        layout.addWidget(option2)
-        layout.addWidget(option2_info)
-        layout.addSpacing(20)
-        
-        # Buttons
         button_layout = QtWidgets.QHBoxLayout()
         
-        ok_btn = QtWidgets.QPushButton("Continue")
+        ok_btn = QtWidgets.QPushButton("Overwrite")
         ok_btn.clicked.connect(self.accept)
         
         cancel_btn = QtWidgets.QPushButton("Cancel")
@@ -344,11 +235,3 @@ class ExportStrategyDialog(QtWidgets.QDialog):
         layout.addLayout(button_layout)
         
         self.setLayout(layout)
-    
-    def _set_choice(self, choice):
-        """Set the user's choice."""
-        self.choice = choice
-    
-    def get_choice(self):
-        """Return user's choice: 'overwrite' or 'version'."""
-        return self.choi

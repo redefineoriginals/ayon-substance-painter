@@ -82,11 +82,9 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         # Log what was exported
         exported_materials = flags.get("exported_materials", [])
         exported_udims = flags.get("exported_udims", [])
-        export_strategy = flags.get("export_strategy", "unknown")
 
         log.info(f"  Materials exported: {exported_materials}")
         log.info(f"  UDIMs: {exported_udims if exported_udims else 'all'}")
-        log.info(f"  Strategy: {export_strategy}")
 
         # Verify files exist
         if os.path.exists(staging_dir):
@@ -224,18 +222,15 @@ class ExtractTextures(pyblish.api.InstancePlugin):
             raise KnownPublishError(
                 f"No representations found for image instance: {first_image.name}"
             )
-
-        first_rep = representations[0]
         
-        # Get the publish directory from representation
-        publish_dir = first_rep.get("publishDir")
-        
-        # Get the publish directory from representation
-        publish_dir = first_rep.get("publishDir")
+        # publishDir is set on the instance itself by ayon_core's
+        # CollectResourcesPath collector (productType "image" is in its
+        # whitelist) - it is never set on the representation dict.
+        publish_dir = first_image.data.get("publishDir")
         
         if not publish_dir:
             raise KnownPublishError(
-                f"No publishDir set on representation for {first_image.name}. "
+                f"No publishDir set on instance for {first_image.name}. "
                 "Check AYON publish templates and anatomy configuration."
             )
 
@@ -251,5 +246,3 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         os.makedirs(parent_dir, exist_ok=True)
 
         return parent_dir
-    
-    

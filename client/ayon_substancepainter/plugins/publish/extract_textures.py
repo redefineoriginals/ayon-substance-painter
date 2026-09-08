@@ -1,177 +1,164 @@
-"""
-Extract textures plugin for AYON Substance Painter integration.
-
-Handles both:
-1. Normal export (when textures haven't been pre-exported)
-2. Pre-exported textures (from the Pre-Export Textures UI action)
-
-This dynamically determines the staging directory from the
-image instance representations, following the actual AYON structure.
-"""
-
 import os
-import logging
-import pyblish.api
-from ayon_core.pipeline import KnownPublishError
+
+import substance_painter.project
+import substance_painter.export
+from ayon_core.pipeline import KnownPublishError, publish
 from ayon_substancepainter.api.lib import set_layer_stack_opacity
 
-log = logging.getLogger(__name__)
 
+class ExtractTextures(publish.Extractor,
+                      publish.ColormanagedPyblishPluginMixin):
+    """Extract Textures using an output template config.
 
-class ExtractTextures(pyblish.api.InstancePlugin):
-    """Extract textures from Substance Painter project.
+    Note:
+        This Extractor assumes that `collect_textureset_images` has prepared
+        the relevant export config and has also collected the individual image
+        instances for publishing including its representation. That is why this
+        particular Extractor doesn't specify representations to integrate.
 
-    When textures are pre-exported via the "Pre-Export Textures" UI action,
-    this plugin skips the export and uses the already-exported files.
-
-    It dynamically determines the publish directory from the image instances,
-    following the actual project structure.
+    #((PIPE-612)rdo-modification
+    Textures can optionally be pre-exported ahead of Publish via the
+    "Write Textures (Publish Location)" manual action, which writes them
+    directly to their final publish location and flags the instance as
+    already exported (see ayon_substancepainter.api.lib). When that flag
+    is present, this Extractor skips re-exporting and only validates and
+    resolves the publish directory from the already-written
+    representations. This decouples the (potentially long-running)
+    texture render from the Publish loop, avoiding long-held AYON
+    database connections during heavy texture exports. Representation
+    and color-space handling below are unchanged for both paths.)
     """
 
-    label = "Extract Textures"
-    order = pyblish.api.ExtractorOrder
+    label = "Extract Texture Set"
     hosts = ["substancepainter"]
     families = ["textureSet"]
-    optional = False
 
-    def process(self, instance: pyblish.api.Instance) -> None:
-        """Process texture extraction or skip if pre-exported.
+    # Run before thumbnail extractors
+    order = publish.Extractor.order - 0.1
 
-        Args:
-            instance (pyblish.api.Instance): The pyblish instance
-        """
-        # [RDO Modification] Check for pre-exported textures flag
+    def process(self, instance):
+        # [RDO Modification] PIPE-612: skip export if textures were
+        # already written by the pre-export action.
         flags = instance.data.get("ayon_flags") or instance.data.get("flags") or {}
-        textures_exported = flags.get("textures_exported", False)
-
-        if textures_exported:
-            # [RDO Modification] Pre-exported path: skip extraction
+        if flags.get("textures_exported", False):
             self._process_pre_exported(instance, flags)
         else:
-            # Normal path: export textures as usual
-            self._process_normal_export(instance)
-
-        # Process colorspace data for all image instances
-        self._process_colorspace_data(instance)
-
-        # TextureSet instance should not be integrated
-        instance.data["integrate"] = False
-
-    # [RDO Modification] PIPE-612: New function for handling pre-exported textures
-    def _process_pre_exported(self, instance, flags):
-        """Handle pre-exported textures.
-
-        Files are already exported to a temp location.
-        We determine the publish directory from the image instances.
-
-        Args:
-            instance: The pyblish instance
-            flags: The ayon_flags dictionary
-        """
-        log.info("Textures already pre-exported via UI action")
-
-        # Get the staging directory (where files currently are - temp location)
-        staging_dir = instance.data.get("stagingDir")
-
-        if not staging_dir:
-            raise KnownPublishError(
-                "Pre-exported textures detected but stagingDir not set on instance"
+            substance_painter.project.execute_when_not_busy(
+                lambda: self._export_texture_set(instance)
             )
 
-        log.info(f"Using pre-exported files from: {staging_dir}")
+        # We'll insert the color space data for each image instance that we
+        # added into this texture set. The collector couldn't do so because
+        # some anatomy and other instance data needs to be collected prior
+        context = instance.context
+        for image_instance in instance:
+            representation = next(iter(image_instance.data["representations"]))
+            colorspace = image_instance.data.get("colorspace")
+            if not colorspace:
+                self.log.debug("No color space data present for instance: "
+                               f"{image_instance}")
+                continue
+            self.set_representation_colorspace(representation,
+                                               context=context,
+                                               colorspace=colorspace)
 
-        # Log what was exported
+        # The TextureSet instance should not be integrated. It generates no
+        # output data. Instead the separated texture instances are generated
+        # from it which themselves integrate into the database.
+        instance.data["integrate"] = False
+
+    # [RDO Modification] PIPE-612: handle textures pre-exported via the
+    # "Write Textures (Publish Location)" manual action.
+    def _process_pre_exported(self, instance, flags):
+        """Validate and register pre-exported textures instead of exporting.
+
+        Files were already written directly to their publish location by
+        the manual pre-export action. Publish here only validates they
+        exist, drops any channel skipped by allowSkippedMaps, and resolves
+        the publish directory from the image instances.
+
+        Args:
+            instance: The pyblish instance (textureSet)
+            flags: The ayon_flags dictionary
+        """
+        self.log.info("Textures already pre-exported via UI action")
+
+        # Safe fallback: stagingDir may not be set directly on this
+        # instance in every flow, so fall back to publishDir if needed.
+        staging_dir = (
+            instance.data.get("stagingDir")
+            or instance.data.get("publishDir")
+        )
+        if not staging_dir:
+            raise KnownPublishError(
+                "Pre-exported textures detected but stagingDir/publishDir "
+                "not set on instance"
+            )
+
+        self.log.info(f"Using pre-exported files from: {staging_dir}")
+
         exported_materials = flags.get("exported_materials", [])
         exported_udims = flags.get("exported_udims", [])
+        self.log.info(f"  Materials exported: {exported_materials}")
+        self.log.info(f"  UDIMs: {exported_udims if exported_udims else 'all'}")
 
-        log.info(f"  Materials exported: {exported_materials}")
-        log.info(f"  UDIMs: {exported_udims if exported_udims else 'all'}")
-
-        # Verify files exist
+        # Additional validation: textures must actually be present before
+        # Publish proceeds.
         if not os.path.exists(staging_dir):
             raise KnownPublishError(f"Staging directory not found: {staging_dir}")
 
-        # [RDO Modification] allowSkippedMaps may cause a channel's file to be
-        # skipped even in the pre-export path, since it uses the same
-        # export_project_textures() API under the hood. Derive the actual
-        # written filenames from disk and drop any image instance whose
-        # representation wasn't actually written.
         exported_filenames = {
             f for _root, _dirs, files in os.walk(staging_dir) for f in files
         }
-        log.info(f"  Found {len(exported_filenames)} files in staging directory")
+        self.log.info(f"  Found {len(exported_filenames)} files in staging directory")
 
         self._remove_skipped_image_instances(instance, exported_filenames)
 
-        # [RDO Modification] Get publish directory from image instances
         publish_dir = self._get_publish_directory_from_representations(instance)
+        self.log.info(f"Files will be integrated to: {publish_dir}")
 
-        log.info(f"Files will be integrated to: {publish_dir}")
-
-        # Update instance with both directories
         instance.data["stagingDir"] = staging_dir
         instance.data["publishDir"] = publish_dir
 
-    def _process_normal_export(self, instance):
-        """Handle normal texture export (not pre-exported).
+    def _export_texture_set(self, instance):
+        """Export the texture set for the given instance.
 
         Args:
-            instance: The pyblish instance
+            instance (pyblish.api.Instance): The instance to export.
+
+        Raises:
+            KnownPublishError: If the export fails.
+
         """
-        import substance_painter
-        import substance_painter.export
-
-        log.info("Exporting textures via Substance Painter API")
-
-        # Get export configuration
-        export_config = instance.data.get("exportConfig")
-        if not export_config:
-            raise KnownPublishError("No export config found on instance")
-
-        # Get staging directory
-        staging_dir = instance.data.get("stagingDir")
-        if not staging_dir:
-            raise KnownPublishError("No stagingDir set on instance")
-
-        # Set export path in config
-        export_config["exportPath"] = staging_dir
-        os.makedirs(staging_dir, exist_ok=True)
-
-        log.info(f"Exporting to: {staging_dir}")
-
-        creator_attrs = instance.data.get("creator_attributes", {})
+        config = instance.data["exportConfig"]
+        creator_attrs = instance.data["creator_attributes"]
         export_channel = creator_attrs.get("exportChannel", [])
         node_ids = instance.data.get("selected_node_id", [])
 
-        # Perform export
         with set_layer_stack_opacity(node_ids, export_channel):
-            result = substance_painter.export.export_project_textures(export_config)
+            result = substance_painter.export.export_project_textures(config)
+            if result.status != substance_painter.export.ExportStatus.Success:
+                raise KnownPublishError(
+                    "Failed to export texture set: {}".format(result.message)
+                )
 
-        if result.status != substance_painter.export.ExportStatus.Success:
-            raise KnownPublishError(f"Texture export failed: {result.message}")
+            exported_filenames = set()
+            for (texture_set_name, stack_name), maps in (
+                result.textures.items()
+            ):
+                # Log our texture outputs
+                self.log.info(
+                    f"Exported stack: {texture_set_name} {stack_name}"
+                )
+                for texture_map in maps:
+                    self.log.info(f"Exported texture: {texture_map}")
+                    exported_filenames.add(os.path.basename(texture_map))
 
-        log.info("Export successful")
-
-        # Log exported files
-        exported_filenames = set()
-        for (texture_set_name, stack_name), maps in result.textures.items():
-            log.info(f"Exported {texture_set_name}/{stack_name}: {len(maps)} files")
-            for texture_map in maps:
-                exported_filenames.add(os.path.basename(texture_map))
-
-        # [RDO Modification] allowSkippedMaps may cause a channel's file to be
-        # skipped entirely - drop image instances whose representation was
-        # not actually written.
+        #((RDO-NEW)rdo-modification
+        # allowSkippedMaps may cause a channel's file to be skipped entirely.
+        # Drop image instances whose representation was not actually written.
         self._remove_skipped_image_instances(instance, exported_filenames)
-
-        # Get publish directory from representations
-        publish_dir = self._get_publish_directory_from_representations(instance)
-
-        log.info(f"Files will be integrated to: {publish_dir}")
-
-        # Update instance
-        instance.data["stagingDir"] = staging_dir
-        instance.data["publishDir"] = publish_dir
+        #((RDO-NEW)rdo-modification-end
 
     # [RDO Modification] Shared by both export paths - see allowSkippedMaps note
     def _remove_skipped_image_instances(self, instance, exported_filenames):
@@ -199,52 +186,12 @@ class ExtractTextures(pyblish.api.InstancePlugin):
                 files = [files]
 
             if files and not any(f in exported_filenames for f in files):
-                log.debug(
+                self.log.debug(
                     "Skipped channel, no export for %s: %s",
                     image_instance, files
                 )
                 instance.remove(image_instance)
                 context.remove(image_instance)
-
-    def _process_colorspace_data(self, instance):
-        """Process colorspace data for image instances.
-
-        Args:
-            instance: The pyblish instance
-        """
-        try:
-            from .colorspace import get_project_channel_data
-        except ImportError:
-            log.debug("Colorspace module not available")
-            return
-
-        log.debug("Processing colorspace data for image instances")
-
-        # Get project channel data
-        try:
-            channel_data = get_project_channel_data()
-        except Exception as exc:
-            log.debug(f"Failed to get colorspace data: {exc}")
-            return
-
-        # Process each image instance
-        for image_instance in instance:
-            texture_set_name = image_instance.data.get("textureset")
-
-            if not channel_data or texture_set_name not in channel_data:
-                log.debug(f"No colorspace data for {texture_set_name}")
-                continue
-
-            texture_set_data = channel_data[texture_set_name]
-            if not texture_set_data:
-                continue
-
-            # Get colorspace and apply to representations
-            colorspace = texture_set_data.get("colorSpace")
-            if colorspace:
-                for representation in image_instance.data.get("representations", []):
-                    representation["colorspace"] = colorspace
-                    log.debug(f"Set colorspace for {image_instance.name}: {colorspace}")
 
     # [RDO Modification] PIPE-612: Dynamic publish directory determination
     def _get_publish_directory_from_representations(self, instance):
@@ -262,18 +209,14 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         Returns:
             str: Path to final publish directory (parent directory for all image outputs)
         """
-        log.debug("Determining publish directory from representations")
+        self.log.debug("Determining publish directory from representations")
 
-        # Get all image instances from the textureSet
         image_instances = list(instance)
-
         if not image_instances:
             raise KnownPublishError("No image instances found in textureSet")
 
-        # Get the first image instance's representation
         first_image = image_instances[0]
         representations = first_image.data.get("representations", [])
-
         if not representations:
             raise KnownPublishError(
                 f"No representations found for image instance: {first_image.name}"
@@ -283,22 +226,19 @@ class ExtractTextures(pyblish.api.InstancePlugin):
         # CollectResourcesPath collector (productType "image" is in its
         # whitelist) - it is never set on the representation dict.
         publish_dir = first_image.data.get("publishDir")
-
         if not publish_dir:
             raise KnownPublishError(
                 f"No publishDir set on instance for {first_image.name}. "
                 "Check AYON publish templates and anatomy configuration."
             )
 
-        log.info(f"Publish directory from representation: {publish_dir}")
+        self.log.info(f"Publish directory from representation: {publish_dir}")
 
         # Get parent directory (the image folder, not the version folder)
         parent_dir = os.path.dirname(publish_dir)  # Remove version folder (003)
         parent_dir = os.path.dirname(parent_dir)   # Remove image-specific folder
+        self.log.info(f"Parent publish directory: {parent_dir}")
 
-        log.info(f"Parent publish directory: {parent_dir}")
-
-        # Ensure directory exists
         os.makedirs(parent_dir, exist_ok=True)
 
         return parent_dir

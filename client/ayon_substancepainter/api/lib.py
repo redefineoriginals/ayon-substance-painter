@@ -5,15 +5,269 @@ import logging
 from collections import defaultdict
 
 import contextlib
+import pyblish.util
 import substance_painter
 import substance_painter.project
 import substance_painter.resource
 import substance_painter.js
 import substance_painter.export
+import substance_painter.textureset
 
 from qtpy import QtGui, QtWidgets, QtCore
 
+from ayon_core.pipeline import KnownPublishError
+
 log = logging.getLogger(__name__)
+
+#((PIPE-612)rdo-modification
+# Pre-export workflow: write textures to their publish location outside
+# the Pyblish publish loop, then let publish skip re-exporting them.
+def _select_texture_instance_from_dialog(texture_instances, parent=None):
+    """Select a texture instance from user dialog.
+    
+    Args:
+        texture_instances (list): List of texture instances to choose from
+        parent (QtWidgets.QWidget, optional): Parent widget for dialog
+        
+    Returns:
+        dict: The selected texture instance
+        
+    Raises:
+        KnownPublishError: If no instances available or user cancels
+    """
+    if not texture_instances:
+        raise KnownPublishError("No 'textureSet' instances found. Create one first.")
+    
+    # If only one instance, return it directly
+    if len(texture_instances) == 1:
+        return texture_instances[0]
+    
+    # Multiple instances - show dialog
+    try:
+        items = [
+            inst.get("productName") or inst.get("label") or inst.get("name") or inst.get("instance_id")
+            for inst in texture_instances
+        ]
+        item, ok = QtWidgets.QInputDialog.getItem(
+            parent or QtWidgets.QApplication.activeWindow(),
+            "Select Texture Set",
+            "Choose the texture set instance to export:",
+            items,
+            0,
+            False,
+        )
+        if ok:
+            index = items.index(item)
+            return texture_instances[index]
+        else:
+            raise KnownPublishError("Pre-export cancelled: no instance selected")
+    except KnownPublishError:
+        # Re-raise user cancellation
+        raise
+    except Exception as e:
+        # Only fall back if dialog system itself failed (Qt unavailable)
+        log.warning(
+            f"Dialog unavailable ({type(e).__name__}), "
+            f"using first texture set. Error: {e}"
+        )
+        return texture_instances[0]
+        
+def build_export_config_from_instance_data(instance):
+    """Build export configuration from stored instance data.
+
+    Uses the same preset as CollectTextureSet.get_export_config() so
+    pre-exported filenames match the representations.
+    """
+    creator_attrs = instance.get("creator_attributes") or {}
+
+    preset_url = creator_attrs.get("exportPresetUrl")
+    if not preset_url:
+        # Legacy instance predates exportPresetUrl being stored.
+        log.warning(
+            "No exportPresetUrl on instance %s, falling back to gltf",
+            instance.get("instance_id")
+        )
+        preset_url = "export-preset-generator://gltf"
+
+    is_single_output = creator_attrs.get("flattenTextureSets", False)
+
+    config = {
+        "exportShaderParams": True,
+        # exportPath will be set by caller after validation
+        "defaultExportPreset": preset_url,
+        "exportParameters": [{
+            "parameters": {
+                "fileFormat": creator_attrs.get("exportFileFormat", "png"),
+                "sizeLog2": creator_attrs.get("exportSize"),
+                "paddingAlgorithm": creator_attrs.get("exportPadding"),
+                "dilationDistance": creator_attrs.get("exportDilationDistance"),
+            }
+        }],
+    }
+
+    export_texture_sets = creator_attrs.get("exportTextureSets") or []
+    if not export_texture_sets:
+        export_texture_sets = [ts.name() for ts in substance_painter.textureset.all_texture_sets()]
+    config["exportList"] = [{"rootPath": name} for name in export_texture_sets]
+
+    params = config["exportParameters"][0]["parameters"]
+    for key in list(params.keys()):
+        if params[key] is None:
+            params.pop(key)
+
+    # Match CollectTextureSet's preset/map filtering.
+    channel_layer = creator_attrs.get("exportChannel", [])
+    maps = get_filtered_export_preset(preset_url, channel_layer, is_single_output)
+    config.update(maps)
+
+    return config
+
+
+def _resolve_publish_texture_staging_dir(instance: dict) -> str:
+    """Resolve staging directory from instance or compute from anatomy.
+    
+    Args:
+        instance (dict): Instance data dictionary
+        
+    Returns:
+        str: Path to staging directory
+        
+    Raises:
+        KnownPublishError: If publishDir not set
+    """
+    staging_dir = (
+        instance.get("stagingDir")
+        or instance.get("publishDir")
+        or instance.get("collect_staging_dir")
+    )
+    
+    if not staging_dir:
+        # publishDir should always be set by AYON's collectors
+        # If missing, it's a configuration error that needs fixing
+        raise KnownPublishError(
+            "publishDir not set in instance. "
+            "Check AYON publish templates and anatomy configuration."
+        )
+    
+    return staging_dir
+
+
+def write_textures_to_publish_location_selective(parent=None):
+    """Export textures with selective material and UDIM options.
+    
+    Runs outside publish loop. Allows artist to choose which materials
+    and UDIMs to export. If this instance was already pre-exported,
+    confirms with the artist before overwriting.
+    """
+    from .pipeline import get_instances_by_id, set_instance
+    from .pre_export_dialog import PreExportDialog, ConfirmOverwriteDialog
+    
+    if not substance_painter.project.is_open():
+        raise KnownPublishError("No Substance Painter project is open.")
+
+    instances_by_id = get_instances_by_id()
+    all_texture_instances = [
+        inst
+        for inst in instances_by_id.values()
+        if inst.get("productType") == "textureSet"
+        or inst.get("family") == "textureSet"
+        or "textureSet" in (inst.get("families") or [])
+    ]
+    texture_instances = [
+        inst for inst in all_texture_instances if inst.get("active", True)
+    ]
+    if all_texture_instances and not texture_instances:
+        raise KnownPublishError(
+            "All 'textureSet' instances are disabled. "
+            "Enable one in the Publisher to pre-export it."
+        )
+
+    # Use shared helper function for dialog selection
+    instance = _select_texture_instance_from_dialog(texture_instances, parent)
+
+    all_texture_sets = [ts.name() for ts in substance_painter.textureset.all_texture_sets()]
+    all_udims = []
+    if all_texture_sets:
+        try:
+            ts = substance_painter.textureset.TextureSet.from_name(all_texture_sets[0])
+            all_udims = [tile.name for tile in ts.all_uv_tiles()]
+        except Exception as exc:
+            log.warning(f"Failed to get UDIMs: {exc}")
+    
+    dialog = PreExportDialog(
+        texture_sets=all_texture_sets,
+        udim_tiles=all_udims,
+        parent=parent
+    )
+    
+    if dialog.exec_() != QtWidgets.QDialog.Accepted:
+        raise KnownPublishError("Pre-export cancelled by user")
+    
+    selected_materials = dialog.get_selected_materials()
+    selected_udims = dialog.get_selected_udims()
+    
+    log.info(f"Exporting {len(selected_materials)} materials")
+    
+    # Run a real collection pass so stagingDir/exportConfig match exactly
+    # what a normal publish would compute, instead of guessing at anatomy
+    # paths ourselves.
+    pyblish_context = pyblish.util.collect()
+    pyblish_instance = next(
+        (
+            inst for inst in pyblish_context
+            if inst.data.get("instance_id") == instance["instance_id"]
+        ),
+        None
+    )
+    if pyblish_instance is None:
+        raise KnownPublishError(
+            f"Could not find instance "
+            f"'{instance.get('productName', instance['instance_id'])}' "
+            "after collection. Check the instance is enabled for publishing."
+        )
+
+    config = pyblish_instance.data.get("exportConfig")
+    if not config:
+        # Collector didn't build one for this instance - derive it
+        # ourselves as a fallback.
+        config = build_export_config_from_instance_data(instance)
+
+    if selected_materials:
+        config["exportList"] = [{"rootPath": name} for name in selected_materials]
+    
+    publish_dir = _resolve_publish_texture_staging_dir(pyblish_instance.data)
+
+    if os.path.isdir(publish_dir) and os.listdir(publish_dir):
+        confirm_dialog = ConfirmOverwriteDialog(parent=parent)
+        if confirm_dialog.exec_() != QtWidgets.QDialog.Accepted:
+            raise KnownPublishError("Pre-export cancelled by user")
+
+    os.makedirs(publish_dir, exist_ok=True)
+    config["exportPath"] = publish_dir
+    
+    export_channel = instance.get("creator_attributes", {}).get("exportChannel", [])
+    node_ids = instance.get("selected_node_id", [])
+    
+    with set_layer_stack_opacity(node_ids, export_channel):
+        result = substance_painter.export.export_project_textures(config)
+    
+    if result.status != substance_painter.export.ExportStatus.Success:
+        error_msg = f"Texture export failed: {result.message}"
+        log.error(error_msg, exc_info=True)
+        raise KnownPublishError(error_msg)
+    
+    flags = instance.setdefault("ayon_flags", {})
+    flags["textures_exported"] = True
+    flags["exported_materials"] = selected_materials
+    flags["exported_udims"] = selected_udims
+    
+    instance["stagingDir"] = publish_dir
+    instance["publishDir"] = publish_dir
+    set_instance(instance["instance_id"], instance, update=True)
+    
+    log.info(f"Textures exported to: {publish_dir}")
+    return publish_dir
+#((PIPE-612)rdo-modification-end)
 
 
 # ---------------------------------------------------------------------------
@@ -202,8 +456,7 @@ def get_export_presets():
         dict: {Resource url: GUI Label}
 
     """
-    # TODO: Find more optimal way to find all export templates
-
+    #TODO: Find more optimal way to find all export templates
     preset_resources = {}
     for shelf in substance_painter.resource.Shelves.all():
         shelf_path = os.path.normpath(shelf.path())
@@ -607,6 +860,8 @@ def get_parsed_export_maps(config, strip_texture_set=False):
     outputs = substance_painter.export.list_project_textures(config)
     templates = get_export_templates(config, strip_folder=False)
 
+    # [RDO Modification] Safe None handling for get_project_channel_data
+    channel_data = get_project_channel_data() or {}
     print("DEBUG: get_project_channel_data() returned:", get_project_channel_data())
 
     #((AR-130525)rdo-modification
@@ -615,14 +870,9 @@ def get_parsed_export_maps(config, strip_texture_set=False):
 
     project_colorspaces = set(
         data["colorSpace"]
-        for data in get_project_channel_data().values()
+        for data in channel_data.values()
         if data and "colorSpace" in data
     )
-
-    # Get all color spaces set for the current project
-    #project_colorspaces = set(
-        #data["colorSpace"] for data in get_project_channel_data().values()
-    #)
 
     # Get current project mesh path and project path to explicitly match
     # the $mesh and $project tokens
@@ -919,8 +1169,7 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
     Args:
         export_preset_name (str): Name of export preset
         channel_type_list (list): A list of channel type requested by users
-        strip_texture_set=False (bool): strip texture set name
-        custom_export_preset (str): custom export preset name
+        strip_texture_set (bool): strip texture set name
 
     Returns:
         dict: export preset data
@@ -930,7 +1179,13 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
     target_maps = []
 
     export_presets = get_export_presets()
-    export_preset_nice_name = export_presets[export_preset_name]
+    # [RDO Modification] Safe .get() access for export preset
+    export_preset_nice_name = export_presets.get(export_preset_name)
+    
+    if not export_preset_nice_name:
+        log.warning(f"Export preset '{export_preset_name}' not found in available presets")
+        return {"exportPresets": [{"name": export_preset_name, "maps": []}]}
+    
     resource_presets = substance_painter.export.list_resource_export_presets()
     preset = next(
         (
@@ -939,7 +1194,8 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
         ), None
     )
     if preset is None:
-        return {}
+        log.warning(f"Preset '{export_preset_nice_name}' not found in resources")
+        return {"exportPresets": [{"name": export_preset_name, "maps": []}]}
 
     maps = preset.list_output_maps()
     for channel_map in maps:
@@ -949,11 +1205,10 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
                 r"[_.-]?\$textureSet[_.-]?", "",
                 old_channel_map
             )
-            # export_preset_name = custom_export_preset
             all_output_maps.append(channel_map)
         else:
             all_output_maps = maps
-    print("all_output_maps", all_output_maps)
+    
     for channel_map in all_output_maps:
         if channel_type_names:
             for channel_name in channel_type_names:
@@ -964,7 +1219,7 @@ def get_filtered_export_preset(export_preset_name, channel_type_names,
                     target_maps.append(channel_map)
         else:
             target_maps = all_output_maps
-    # Create a new preset
+    
     return {
         "exportPresets": [
             {

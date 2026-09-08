@@ -3,23 +3,27 @@
 import os
 import logging
 from functools import partial
-
+ 
 # Substance 3D Painter modules
 import substance_painter.ui
 import substance_painter.event
 import substance_painter.project
-
+import substance_painter.export
+ 
 import pyblish.api
-
+ 
+from qtpy import QtWidgets, QtCore
+ 
 from ayon_core.host import HostBase, IWorkfileHost, ILoadHost, IPublishHost
 from ayon_core.settings import get_current_project_settings
-
+ 
 from ayon_core.pipeline.template_data import get_template_data_with_names
 from ayon_core.pipeline import (
     register_creator_plugin_path,
     register_loader_plugin_path,
     AVALON_CONTAINER_ID,
     Anatomy,
+    KnownPublishError,
 )
 from ayon_core.lib import (
     StringTemplate,
@@ -28,10 +32,11 @@ from ayon_core.lib import (
 )
 from ayon_core.pipeline.load import any_outdated_containers
 from ayon_substancepainter import SUBSTANCE_HOST_DIR
-
+ 
 from . import lib
-
-log = logging.getLogger("ayon_substancepainter")
+ 
+# Import lib functions used in pre-export workflow
+from .lib import write_textures_to_publish_location_selective
 
 PLUGINS_DIR = os.path.join(SUBSTANCE_HOST_DIR, "plugins")
 PUBLISH_PATH = os.path.join(PLUGINS_DIR, "publish")
@@ -43,6 +48,10 @@ OPENPYPE_METADATA_KEY = "OpenPype"
 OPENPYPE_METADATA_CONTAINERS_KEY = "containers"  # child key
 OPENPYPE_METADATA_CONTEXT_KEY = "context"        # child key
 OPENPYPE_METADATA_INSTANCES_KEY = "instances"    # child key
+
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
@@ -162,7 +171,8 @@ class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
         return metadata.get(OPENPYPE_METADATA_CONTEXT_KEY) or {}
 
     def _install_menu(self):
-        from qtpy import QtWidgets
+        from qtpy import QtWidgets , QtCore
+        
         from ayon_core.tools.utils import host_tools
 
         parent = substance_painter.ui.get_main_window()
@@ -202,6 +212,65 @@ class SubstanceHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
         action.triggered.connect(
             lambda: host_tools.show_workfiles(parent=parent)
         )
+
+        # [RDO Modification] PIPE-612: Pre-export textures menu action
+        def _pre_export_textures():
+            """Callback to pre-export textures with selective options.
+
+            This runs outside of the pyblish publish loop. Users can select:
+            - Which materials/texture sets to export
+            - Which UDIMs to export (or all)
+            - Whether to create new version or overwrite current
+            """
+            if parent is None:
+                log.error("Cannot export textures: Substance Painter main window not available")
+                return
+
+            # Show a blocking progress dialog during export
+            progress_dialog = QtWidgets.QProgressDialog(
+                "Exporting textures...",
+                None,
+                0,
+                0,
+                parent
+            )
+            progress_dialog.setWindowModality(QtCore.Qt.WindowModal)
+            progress_dialog.setWindowTitle("Export Textures")
+            progress_dialog.show()
+            QtWidgets.QApplication.instance().processEvents()
+
+            try:
+                log.info("Starting selective texture pre-export...")
+                
+                # Use the new selective export function
+                publish_dir = write_textures_to_publish_location_selective(parent=parent)
+                progress_dialog.close()
+
+                log.info(f"Pre-export completed. Textures written to: {publish_dir}")
+
+                # Show success message to user
+                QtWidgets.QMessageBox.information(
+                    parent,
+                    "Textures Exported Successfully",
+                    f"Textures have been exported to:\n\n{publish_dir}\n\n"
+                    "You can now proceed to publish without re-exporting."
+                )
+
+            except Exception as exc:
+                progress_dialog.close()
+                log.error(f"Error during texture pre-export: {exc}", exc_info=True)
+
+                # Show detailed error message to user
+                error_msg = str(exc)
+                QtWidgets.QMessageBox.critical(
+                    parent,
+                    "Texture Export Failed",
+                    f"Failed to export textures:\n\n{error_msg}\n\n"
+                    "Check the console log for more details."
+                )
+
+        export_action = menu.addAction("Pre-Export Textures")
+        export_action.triggered.connect(_pre_export_textures)
 
         substance_painter.ui.add_menu(menu)
 

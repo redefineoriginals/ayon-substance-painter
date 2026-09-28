@@ -23,6 +23,12 @@ class ValidateOutputMaps(pyblish.api.InstancePlugin):
     families = ["textureSet"]
 
     def process(self, instance):
+        # Skip validation if textures were already pre-exported outside the
+        # publish loop. When pre-exporting, we do not want to run another
+        # export here; see ValidatePreExportedTextures for existence checks.
+        flags = instance.data.get("ayon_flags") or instance.data.get("flags") or {}
+        if flags.get("textures_exported"):
+            return
 
         config = instance.data["exportConfig"]
 

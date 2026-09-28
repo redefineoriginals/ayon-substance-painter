@@ -10,7 +10,6 @@ More information see:
 """  # noqa E501
 import substance_painter.export
 import substance_painter.js
-import json
 import os
 
 from .lib import (
@@ -73,9 +72,6 @@ def get_project_channel_data():
 
     """
 
-    keys = ["colorSpace"]
-    query = {key: f"${key}" for key in keys}
-
     config = {
         "exportPath": "/",
         "exportShaderParams": False,
@@ -86,7 +82,7 @@ def get_project_channel_data():
 
             # List of maps making up this export preset.
             "maps": [{
-                "fileName": json.dumps(query),
+                "fileName": "$colorSpace",
                 # List of source/destination defining which channels will
                 # make up the texture file.
                 "channels": [],
@@ -119,7 +115,6 @@ def get_project_channel_data():
             )
 
         path = first_value[0]
-        print(f"DEBUG path: {repr(path)}")
 
         if not path or not str(path).strip():
             raise RuntimeError(
@@ -128,18 +123,14 @@ def get_project_channel_data():
 
         normalized_path = str(path).replace("\\", "/").rstrip("/")
         filename = normalized_path.split("/")[-1]
-
-        print(f"DEBUG normalized_path: {repr(normalized_path)}")
-        print(f"DEBUG filename: {repr(filename)}")
-
         stem = os.path.splitext(filename)[0].strip()
-
-        print(f"DEBUG stem: {repr(stem)}")
 
         if not stem:
             raise RuntimeError(
                 f"Empty filename stem from Substance Painter export query. Path was: {repr(path)}"
             )
+
+        return stem
 
     # Query for each type of channel (color and data)
     color_channel, data_channel = _get_first_color_and_data_stack_and_channel()

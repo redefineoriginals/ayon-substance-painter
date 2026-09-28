@@ -20,6 +20,28 @@ import substance_painter
 import substance_painter.project
 
 
+# -*- coding: utf-8 -*-
+"""Creator plugin for creating textures."""
+from ayon_core.pipeline import CreatedInstance, Creator, CreatorError
+from ayon_core.lib import (
+    EnumDef,
+    UILabelDef,
+    NumberDef,
+    BoolDef
+)
+
+from ayon_substancepainter.api.pipeline import (
+    get_instances,
+    set_instance,
+    set_instances,
+    remove_instance
+)
+from ayon_substancepainter.api.lib import get_export_presets
+
+import substance_painter
+import substance_painter.project
+
+
 class CreateTextures(Creator):
     """Create a texture set."""
     identifier = "io.openpype.creators.substancepainter.textureset"
@@ -73,6 +95,28 @@ class CreateTextures(Creator):
             instance_id=instance["instance_id"],
             instance_data=instance.data_to_store()
         )
+
+        #((PIPE-508)rdo-modification
+        # Auto-spawn a textureReview instance when Review is enabled.
+        if creator_attributes.get("review", True):
+            self._create_review_instance(product_name, instance_data)
+
+    def _create_review_instance(self, texture_product_name, instance_data):
+        review_creator = self.create_context.creators.get(
+            "io.openpype.creators.substancepainter.review")
+        if not review_creator:
+            self.log.warning("Review creator not found, skipping review "
+                             "instance creation.")
+            return
+
+        review_data = {
+            "folderPath": instance_data.get("folderPath"),
+            "task": instance_data.get("task"),
+            "variant": instance_data.get("variant"),
+        }
+        review_product_name = "{}_review".format(texture_product_name)
+        review_creator.create(review_product_name, review_data, {})
+        #((PIPE-508)rdo-modification-end
 
     def collect_instances(self):
         for instance in get_instances():
